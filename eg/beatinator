@@ -1,0 +1,46 @@
+#!/usr/bin/env perl
+#
+# this being a much cleaned up version of the original motivation behind
+# the code that eventually resulted in the Music::RhythmSet module
+
+use 5.24.0;
+use warnings;
+
+use Music::RhythmSet;
+use Music::RhythmSet::Util qw(compare_onsets filter_pattern);
+
+my $filename = shift // die "Usage: $0 midi-file [measure-count]\n";
+my $measures = shift // 32;
+my $BPM      = 16;
+my $rest     = [ (0) x $BPM ];
+
+my $set = Music::RhythmSet->new->add(
+    { next => \&mainpattern },
+    { next => \&nextpattern, pattern => $rest, ttl => 4 },
+    { next => \&nextpattern, pattern => $rest, ttl => 8 },
+);
+
+$set->advance($measures);
+
+$set->to_midi(
+    $measures,
+    sustain => 1,
+    track   => [ {}, { note => 67 }, { note => 72 } ]
+)->write_to_file($filename);
+
+sub mainpattern { filter_pattern(5, $BPM, 300), 8 }
+
+sub nextpattern {
+    my ($self, %param) = @_;
+    my $id     = $self->id;
+    my $voices = $param{set}->voices;
+    my ($new, $onsets);
+  AGAIN: {
+        $new = filter_pattern(3 + int rand 5, $BPM, 100);
+        for my $n (0 .. $id - 1) {
+            redo AGAIN
+              if compare_onsets($new, $voices->[$n]->pattern) >= 0.5;
+        }
+    }
+    return $new, 8;
+}
