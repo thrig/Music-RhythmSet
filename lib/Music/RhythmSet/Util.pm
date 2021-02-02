@@ -16,7 +16,14 @@ use constant { NOTE_ON => 1, NOTE_OFF => 0 };
 
 use parent qw(Exporter);
 our @EXPORT_OK =
-  qw(compare_onsets filter_pattern rand_onsets score_fourfour score_stddev);
+  qw(beatstring compare_onsets filter_pattern rand_onsets score_fourfour score_stddev);
+
+sub beatstring {
+    my ($pat) = @_;
+    croak "no pattern set"
+      unless defined $pat and ref $pat eq 'ARRAY';
+    join('', $pat->@*) =~ tr/10/x./r;
+}
 
 sub compare_onsets {
     my ($first, $second) = @_;
@@ -127,6 +134,11 @@ qualified or be imported by listing them on the C<use> line.
 =head1 FUNCTIONS
 
 =over 4
+
+=item B<beatstring> I<pattern>
+
+Converts a I<pattern> such as C<[qw/1 0 1 0/]> to a string such
+as C<x.x.>.
 
 =item B<compare_onsets> I<pattern1> I<pattern2>
 

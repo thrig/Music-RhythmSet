@@ -16,8 +16,7 @@ use namespace::clean;
 use constant { NOTE_ON => 1, NOTE_OFF => 0 };
 
 use parent qw(Exporter);
-our @EXPORT_OK =
-  qw(beatstring duration flatten ocvec onset_count write_midi);
+our @EXPORT_OK = qw(duration flatten ocvec onset_count write_midi);
 
 has id      => (is => 'rw');
 has next    => (is => 'rw');
@@ -41,13 +40,6 @@ sub BUILD {
 ########################################################################
 #
 # FUNCTIONS
-
-sub beatstring {
-    my ($pat) = @_;
-    croak "no pattern set"
-      unless defined $pat and ref $pat eq 'ARRAY';
-    join('', $pat->@*) =~ tr/10/x./r;
-}
 
 sub duration {
     my ($replay) = @_;
@@ -282,7 +274,7 @@ sub to_midi {
     # fiddle with delays on the completed stream
     if ($param{sustain} or $param{notext}) {
         my $i = 0;
-        while (1) {
+        while ($i < $events->$#*) {
             if ($param{sustain} and $events->[$i][0] eq 'note_off') {
                 # extend delay on the note_off to the next note_on;
                 # there might be a text_event between
@@ -309,9 +301,9 @@ sub to_midi {
                 splice $events->@*, $i, 1;
                 $events->[$i] = [ $events->[$i]->@* ];
                 $events->[$i][1] += $delay;
-                $i--;    # reprocess this index because splice
+                next;    # reprocess this index because splice
             }
-            last if ++$i == $events->$#*;
+            $i++;
         }
         # NOTE note_off cannot appear in the last index as that is
         # always filled by the EOT text_event. therefore sustain is not
@@ -398,8 +390,10 @@ If no callback function is set the B<advance> method may throw an error.
 
 =item B<measure>
 
-The measure number of the voice. The first measure is C<0>, not C<1>,
-though B<measure> will be C<1> following the first C<advance(1)> call.
+The current measure number of the voice. The first measure is C<0>, not
+C<1>, though B<measure> will be C<1> following the first C<advance(1)>
+call. The B<next> callback can make use of this to make decisions based
+on the measure number, as B<measure> is passed in as a parameter:
 
   ... = Music::RhythmSet::Voice->new(
       next => sub {
@@ -407,9 +401,20 @@ though B<measure> will be C<1> following the first C<advance(1)> call.
           if ($param{measure} == 0) {   # first measure
               ...
 
+The length of a measure will change should the length of the I<pattern>
+used vary over time. This may complicate the display of the results or
+other such calculations that rely on measure numbers, especially if
+there are multiple voices that use different pattern lengths and vary
+those lengths over time. See B<changes> in the code for
+L<Music::RhythmSet> for one way to handle such a case.
+
 =item B<pattern>
 
-The current rhythmic pattern, an array reference of zeros and ones.
+The current rhythmic pattern, an array reference of zeros and ones;
+these might be called "beats" where a C<1> represents an onset, and C<0>
+silence. A B<pattern> may be considered as a single measure of music (of
+some number of beats which is the length of the B<pattern>), though
+B<measure> is used for something else in this code.
 
 =item B<replay>
 
@@ -426,11 +431,6 @@ Time-to-live of the current B<pattern>.
 =head1 FUNCTIONS
 
 =over 4
-
-=item B<beatstring> I<pattern>
-
-Converts a I<pattern> such as C<[qw/1 0 1 0/]> to a string such
-as C<x.x.>.
 
 =item B<duration> I<replay-log>
 
@@ -510,6 +510,15 @@ B<advance>. In particular the I<measure> number (counting from 0, not 1)
 and the current I<pattern> are set by B<advance>.
 
 =head1 BUGS
+
+B<to_ly> has no support for changing the meter to match the length of
+the I<pattern> should that vary over time. In theory this could be as
+simple as prefixing a C<\time 5/4> (or whatever) time change for
+patterns that work out to five quarter notes (or whatever) before the
+notes for the C<[pattern],ttl> pair in question. In practice there are
+probably grue waiting to mug you around various sharp corners in any
+such implementation, such as when to use C<3/4> versus C<6/8> given
+twelve 16th notes...
 
 <https://github.com/thrig/Music-RhythmSet>
 

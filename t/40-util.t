@@ -3,11 +3,15 @@
 # these utility routines are pretty light on error checking
 
 use 5.24.0;
-use Test::Most tests => 21;
+use Test::Most tests => 24;
 my $deeply = \&eq_or_diff;
 
 use Music::RhythmSet::Util
-  qw(compare_onsets filter_pattern rand_onsets score_fourfour score_stddev);
+  qw(beatstring compare_onsets filter_pattern rand_onsets score_fourfour score_stddev);
+
+is(beatstring([qw/1 0 0 1 0 0 1 0 0 0 1 0/]), 'x..x..x...x.');
+dies_ok { beatstring() };
+dies_ok { beatstring({}) };
 
 is(sprintf('%.0f', compare_onsets([qw/1 1/], [qw/1 1/])), 1);
 is(sprintf('%.1f', compare_onsets([qw/1 1/], [qw/1 0/])), 0.5);

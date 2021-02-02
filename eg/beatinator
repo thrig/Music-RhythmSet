@@ -1,15 +1,18 @@
 #!/usr/bin/env perl
 #
-# this being a much cleaned up version of the original motivation behind
-# the code that eventually resulted in the Music::RhythmSet module
+# this being a much cleaned up (and improved) version of the original
+# motivation behind the code that eventually resulted in the
+# Music::RhythmSet module
 
 use 5.24.0;
 use warnings;
 
 use Music::RhythmSet;
-use Music::RhythmSet::Util qw(compare_onsets filter_pattern);
+use Music::RhythmSet::Util
+  qw(beatstring compare_onsets filter_pattern);
 
-my $filename = shift // die "Usage: $0 midi-file [measure-count]\n";
+my $filename = shift
+  // die "Usage: $0 midi-file [measure-count]\n";
 my $measures = shift // 32;
 my $BPM      = 16;
 my $rest     = [ (0) x $BPM ];
@@ -44,3 +47,18 @@ sub nextpattern {
     }
     return $new, 8;
 }
+
+# what beat patterns change in what measure? show this
+my @prev;
+$set->changes(
+    divisor => $BPM,
+    max     => $measures,
+    header  => sub { say '# measure ' . $_[0] },
+    voice   => sub {
+        my ($id, $bp, $new) = @_;
+        my $bs   = beatstring($bp);
+        my $same = $new && $bs eq ($prev[$id] // '');
+        say join "\t", $id, $bs, ($new ? 'n' : ''), ($same ? 'r' : '');
+        $prev[$id] = $bs;
+    }
+);

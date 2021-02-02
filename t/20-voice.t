@@ -9,20 +9,18 @@
 # scripts repository) which is a thin wrapper around MIDI::Opus ->dump
 
 use 5.24.0;
-use Test::Most tests => 75;
+use Test::Most tests => 72;
 my $deeply = \&eq_or_diff;
 
 use MIDI;
 use Music::RhythmSet::Voice
-  qw(beatstring duration flatten ocvec onset_count write_midi);
+  qw(duration flatten ocvec onset_count write_midi);
 
 my @playback;
 
 ########################################################################
 #
 # FUNCTIONS
-
-is(beatstring([qw/1 0 0 1 0 0 1 0 0 0 1 0/]), 'x..x..x...x.');
 
 my $replay =
   [ [ [qw/1 1 0/], 2 ], [ [qw/1 1 1/], 1 ], [ [qw/0 1/], 3 ] ];
@@ -280,8 +278,11 @@ push @playback, 't/sustains.midi', 't/staccato.midi';
 # a whole lot of nothing
 $track = audit_track(
     sub {
-        Music::RhythmSet::Voice->new(id => 42, pattern => [0], ttl => 1)
-          ->to_midi(1);
+        Music::RhythmSet::Voice->new(
+            id      => 42,
+            pattern => [0],
+            ttl     => 1
+        )->to_midi(1);
     },
     {   '_dur'       => 20,
         '_events'    => 4,
@@ -324,7 +325,7 @@ write_midi('t/silence-ci.midi', $track);
 # test various conditions to up the coverage; run
 #   ./Build testcover
 # to see what is being missed
-lives_ok { Music::RhythmSet::Voice->new(ttl => 0) };
+lives_ok { Music::RhythmSet::Voice->new(ttl     => 0) };
 lives_ok { Music::RhythmSet::Voice->new(pattern => [1]) };
 dies_ok {
     Music::RhythmSet::Voice->new(pattern => undef, ttl => 0)
@@ -338,8 +339,6 @@ dies_ok {
 dies_ok {
     Music::RhythmSet::Voice->new(pattern => {}, ttl => 42)
 };
-dies_ok { beatstring() };
-dies_ok { beatstring({}) };
 dies_ok { duration() };
 dies_ok { duration({}) };
 dies_ok { flatten() };

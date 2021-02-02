@@ -1,7 +1,7 @@
 #!perl
 
 use 5.24.0;
-use Test::Most tests => 39;
+use Test::Most tests => 49;
 my $deeply = \&eq_or_diff;
 
 use Music::RhythmSet;
@@ -123,3 +123,49 @@ dies_ok { $set->to_ly };
 dies_ok { $set->to_ly(0) };
 dies_ok { $set->to_midi };
 dies_ok { $set->to_midi(0) };
+
+# ->changes ... TODO better tests than this?
+my $beat = 0;
+my @changes;
+lives_ok {
+    $set->changes(
+        header => sub { $beat = shift },
+        voice  => sub { push @changes, \@_ },
+    )
+};
+is($beat, 2);
+$deeply->(
+    \@changes,
+    [   [ 0, [ 0, 1 ], 1 ],        # voice 0, pattern, is-new?
+        [ 1, [ 1, 0 ], 1 ],        # voice 1
+        [ 0, [ 0, 1 ], undef ],    # TTL 2 -> undef is-new?
+        [ 1, [ 1, 0 ], 1 ]         # TTL 1 so this voice "changed"
+    ]
+);
+
+# otherwise voice 0 would croak
+$set->voices->[0]->next(sub { [ 1, 1 ], 3 });
+$set->advance(10);
+
+my $measures = 0;
+lives_ok {
+    $set->changes(
+        divisor => 2,                     # two beats per measure
+        max     => 2,
+        header  => sub { $measures++ },
+        voice   => sub { $pattern = $_[1] if $_[0] eq 0 },
+    )
+};
+is($measures, 3);
+$deeply->($pattern, [ 1, 1 ]);
+
+dies_ok { $set->changes };
+dies_ok {
+    $set->changes(header => sub { "foo" })
+};
+dies_ok {
+    $set->changes(voice => {}, header => sub { "foo" })
+};
+dies_ok {
+    $set->changes(voice => sub { "foo" }, header => {})
+};
