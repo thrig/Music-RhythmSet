@@ -6,50 +6,27 @@
 use 5.24.0;
 use warnings;
 use Music::RhythmSet;
-use Music::RhythmSet::Util
-  qw(beatstring compare_onsets filter_pattern);
+use Music::RhythmSet::Util qw(beatstring filter_pattern);
 
 my $filename = shift // die "Usage: $0 midi-file [measure-count]\n";
 my $measures = shift // 64;
-# all voices use the same number of beats per measure (this need not
-# be true)
+# all voices use the same number of beats per measure (this need not be
+# true but would make the "measures" harder to line up between voices)
 my $BPM  = 16;
 my $rest = [ (0) x $BPM ];
 
-# the main voice changes less often than the other voices (every 16
-# measures), always uses five onsets per measure, and has less variance
-# (300 trials, see the 'eg/variance' script) in possible rhythms
-sub mainpattern { filter_pattern(5, $BPM, 300), 16 }
+# each voice has a consistent (but different) number of onsets per
+# measure. those with more onsets are given more trials to lower
+# the rhythmic variance
+sub voice0 { filter_pattern(5, $BPM, 400), 16 }
+sub voice1 { filter_pattern(3, $BPM, 100), 16 }
+sub voice2 { filter_pattern(7, $BPM, 800), 8 }
 
-# secondary voices
-sub nextpattern {
-    my ($self, %param) = @_;
-    my $id     = $self->id;
-    my $voices = $param{set}->voices;
-    my ($new, $onsets);
-  CHOICE: {
-        # varied number of onsets, increased variance (only 100 trials)
-        $new = filter_pattern(3 + int rand 5, $BPM, 100);
-        for my $n (0 .. $id - 1) {
-            # NOTE if the percentage is too low or there are too many
-            # voices this can soft-lock the loop; in such a case there
-            # would need to be a way to relax this restriction after
-            # some number of loops, or to make the restriction vary
-            # depending on the voice. OTOH you might want more overlap
-            # between the voices...
-            redo CHOICE
-              if compare_onsets($new, $voices->[$n]->pattern) >= 0.4;
-        }
-    }
-    # eight measure TTL
-    return $new, 8;
-}
-
-# the secondary voices start after 4 or 8 measures of silence
+# delayed onsets for two of the voices
 my $set = Music::RhythmSet->new->add(
-    { next => \&mainpattern },
-    { next => \&nextpattern, pattern => $rest, ttl => 4 },
-    { next => \&nextpattern, pattern => $rest, ttl => 8 },
+    { next => \&voice0 },
+    { next => \&voice1, pattern => $rest, ttl => 8 },
+    { next => \&voice2, pattern => $rest, ttl => 16 },
 );
 
 $set->advance($measures);
