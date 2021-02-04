@@ -9,6 +9,7 @@
 # scripts repository) which is a thin wrapper around MIDI::Opus ->dump
 
 use 5.24.0;
+use Data::Dumper;
 use Test::Most tests => 72;
 my $deeply = \&eq_or_diff;
 
@@ -131,11 +132,14 @@ MORLOCK
             my ($self, %param) = @_;
             if ($param{measure} == 0) {
                 return [qw/1 1 0/], 2;
-            } elsif ($param{measure} == 3) {
+            } elsif ($param{measure} == 2) {
                 return [qw/1 1 1/], 1;
-            } elsif ($param{measure} == 5) {
+            } elsif ($param{measure} == 3) {
                 return [qw/0 1/], 3;
+            } elsif ($param{measure} == 6) {
+                return [qw/0 0 1/], 2;
             } else {
+                diag Dumper \%param;
                 die "should not be reached";
             }
         }
@@ -148,13 +152,11 @@ MORLOCK
     is($v2->measure, 6);
     $deeply->($v2->replay, $replay);
 
-    # this is a bit non-intuitive; 'replay' already has [0 1],3 but the
-    # TTL has not dropped
     $deeply->($v2->pattern, [qw/0 1/]);
-    is($v2->ttl, 3);
+    is($v2->ttl, 1);
 
     lives_ok { $v2->advance };
-    $deeply->($v2->pattern, [qw/0 1/]);
+    $deeply->($v2->pattern, [qw/0 0 1/]);
     is($v2->measure, 7);
     is($v2->ttl,     2);
 }

@@ -9,14 +9,28 @@ our $VERSION = '0.01';
 use 5.24.0;
 use warnings;
 use Carp qw(croak);
+use List::GroupingPriorityQueue qw(grpriq_add);
 use MIDI;
 use Moo;
 use namespace::clean;
-use List::GroupingPriorityQueue qw(grpriq_add);
+
 use Music::RhythmSet::Voice;
 
 has curid  => (is => 'rw', default => sub { 0 });
 has voices => (is => 'rw', default => sub { [] });
+
+# perldoc Moo
+sub BUILD {
+    my ($self, $args) = @_;
+    # so ->new->add(...) can instead be written ->new(voicel => [...])
+    if (exists $args->{voicel}) {
+        croak "invalid voicel"
+          unless defined $args->{voicel}
+          and ref $args->{voicel} eq 'ARRAY';
+        $self->add($args->{voicel}->@*);
+        delete $args->{voicel};
+    }
+}
 
 # the 'id' attribute tries to match the array index in 'voices' though
 # may not if the caller manually fiddles with either the voices list
@@ -77,23 +91,32 @@ sub changes {
             $beat += $ttl * $bp->@*;
         }
     }
-    my @current;
-    # parse the queue for pattern changes and let the caller decide
-    # how to act on the results (see eg/beatinator for one way)
-    for my $entry ($queue->@*) {    # [[id,[bp]],...],priority
+    my (@curpat, @curpat_str);
+    # parse the queue for pattern changes and let the caller decide how
+    # to act on the results (see eg/beatinator for one way)
+    for my $entry ($queue->@*) {    # [[id,[bp]],...],beats
         my $measure = $entry->[1] / $param{divisor};
-        last if $measure > $param{max};
-        my @changed;
+        last if $measure >= $param{max};
+        my (@changed, @repeat);
         for my $ref ($entry->[0]->@*) {
             my ($id, $bp) = $ref->@*;
             $changed[$id] = 1;
-            $current[$id] = $bp;
+            $curpat[$id]  = $bp;
+            my $bs = join('', $bp->@*) =~ tr/10/x./r;
+            if ($bs eq ($curpat_str[$id] // '')) {
+                $repeat[$id] = 1;
+            }
+            $curpat_str[$id] = $bs;
         }
         $param{header}->($measure);
-        for my $id (0 .. $#current) {
-            $param{voice}->($id, $current[$id], $changed[$id]);
+        for my $id (0 .. $#curpat) {
+            $param{voice}->(
+                $measure, $id, $curpat[$id], $curpat_str[$id], $changed[$id],
+                $repeat[$id]
+            );
         }
     }
+    return $self;
 }
 
 sub clone {
@@ -201,6 +224,10 @@ Various calls may B<die> or B<croak> if something goes awry.
 The B<new> method accepts any of the L</ATTRIBUTES>, but these are
 unlikely to need to be set manually.
 
+=head2 BUILD
+
+Constructor helper subroutine. See L<Moo>.
+
 =head1 ATTRIBUTES
 
 =over 4
@@ -249,13 +276,9 @@ B<next> callback.
 Utility method that shows when voices change their patterns in their
 replay logs, and what other patterns are active at those points. Voices
 should have something in their replay log before this method is called.
+
 The C<eg/beatinator> script in this module's distribution shows one way
 to use this call.
-
-Note that changes to the same pattern as previously set are considered
-a change; this shows when the B<next> method (or similar) is doing
-something to a pattern, even if that is setting it to the same value
-as before.
 
 There are two mandatory parameters:
 
@@ -263,13 +286,21 @@ There are two mandatory parameters:
 
 =item I<header>
 
-Callback; it is passed the current "measure" number of the change.
+Callback; it is passed the current "measure" number of the change. This
+happens before the I<voice> callback works through each voice.
 
 =item I<voice>
 
-Callback; it is passed the voice ID, the current pattern for that voice
-ID, and a boolean that indicates whether or not the pattern is new for
-this "measure".
+Callback; called for each voice in turn. It is passed the "measure"
+number, voice ID, the current pattern as an array reference, the current
+pattern as a beatstring, a boolean for whether the pattern might have
+changed, and another boolean that indicates whether the pattern was a
+repeat of the previous.
+
+Two booleans are used because a B<next> callback could return the same
+pattern as before; this will create a new entry in the replay log
+(what the first boolean indicates) that may be the same as before (the
+second boolean).
 
 =back
 

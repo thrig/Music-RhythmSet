@@ -8,7 +8,7 @@ our $VERSION = '0.01';
 
 use 5.24.0;
 use warnings;
-use Carp qw(croak);
+use Carp qw(confess croak);
 use MIDI;
 use Moo;
 use namespace::clean;
@@ -40,6 +40,9 @@ sub BUILD {
 ########################################################################
 #
 # FUNCTIONS
+
+# TODO 'changes' but for a single voice... can easily enough put a voice
+# into a set then call changes there, meanwhile
 
 sub duration {
     my ($replay) = @_;
@@ -106,23 +109,21 @@ sub advance {
     my ($self, $count, %param) = @_;
     my $measure = $self->measure;
     for (1 .. $count // 1) {
-        my $ttl = $self->ttl;
+        my $ttl = $self->ttl - 1;
         $param{measure} = $measure++;
         $param{pattern} = $self->pattern;
         if ($ttl <= 0) {
             my $next = $self->next;
-            croak "no next callback for voice"
+            confess "no next callback"
               unless defined $next and ref $next eq 'CODE';
             ($param{pattern}, $ttl) = $next->($self, %param);
-            croak "no pattern set"
+            confess "no pattern set"
               unless defined $param{pattern}
               and ref $param{pattern} eq 'ARRAY'
               and $param{pattern}->@*;
-            croak "invalid ttl" if $ttl < 1;
+            confess "invalid ttl" if $ttl < 1;
             $self->pattern($param{pattern});
             push $self->replay->@*, [ $param{pattern}, $ttl ];
-        } else {
-            $ttl--;
         }
         $self->ttl($ttl);
     }
@@ -367,8 +368,15 @@ Various calls may B<die> or B<croak> if something goes awry.
 =head1 CONSTRUCTOR
 
 The B<new> method accepts any of the L</ATTRIBUTES>. If both a
-I<pattern> and a I<ttl> are given they will be added to the
-I<replay> log.
+I<pattern> and a I<ttl> are given they will be added to the I<replay>
+log. Another option is to only build out the I<replay> log via I<next>
+callback through the B<advance> method, or to set the I<replay> log
+manually. B<measure> may need to be set manually if the I<replay> log is
+built not using B<advance> calls.
+
+=head2 BUILD
+
+Constructor helper subroutine. See L<Moo>.
 
 =head1 ATTRIBUTES
 

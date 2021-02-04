@@ -1,8 +1,7 @@
 #!/usr/bin/env perl
 #
-# this being a much cleaned up (and improved) version of the original
-# motivation behind the code that eventually resulted in the
-# Music::RhythmSet module
+# beatinator - generates three voices that vary their rhythmic patterns
+# over time. MIDI output and a text log of the changes are produced
 
 use 5.24.0;
 use warnings;
@@ -13,10 +12,42 @@ use Music::RhythmSet::Util
 
 my $filename = shift
   // die "Usage: $0 midi-file [measure-count]\n";
-my $measures = shift // 32;
-my $BPM      = 16;
-my $rest     = [ (0) x $BPM ];
+my $measures = shift // 64;
+# all voices use the same number of beats per measure (this need not
+# be true)
+my $BPM  = 16;
+my $rest = [ (0) x $BPM ];
 
+# the main voice changes less often than the other voices (every 16
+# measures), always uses five onsets per measure, and has less variance
+# (300 trials) in possible rhythms
+sub mainpattern { filter_pattern(5, $BPM, 300), 16 }
+
+# secondary voices
+sub nextpattern {
+    my ($self, %param) = @_;
+    my $id     = $self->id;
+    my $voices = $param{set}->voices;
+    my ($new, $onsets);
+  CHOICE: {
+        # varied numbers of beats, increased variance (only 100 trials)
+        $new = filter_pattern(3 + int rand 5, $BPM, 100);
+        for my $n (0 .. $id - 1) {
+            # NOTE if the percentage is too low or there are too many
+            # voices this can soft-lock the loop; in such a case there
+            # would need to be a way to relax this restriction after
+            # some number of loops, or to make the restriction vary
+            # depending on the voice. OTOH you might want more overlap
+            # between the voices...
+            redo CHOICE
+              if compare_onsets($new, $voices->[$n]->pattern) >= 0.4;
+        }
+    }
+    # eight measure TTL
+    return $new, 8;
+}
+
+# the secondary voices start after 4 or 8 measures of silence
 my $set = Music::RhythmSet->new->add(
     { next => \&mainpattern },
     { next => \&nextpattern, pattern => $rest, ttl => 4 },
@@ -25,40 +56,29 @@ my $set = Music::RhythmSet->new->add(
 
 $set->advance($measures);
 
+# different notes for the different voices so they are easier to tell
+# apart (they might instead use the same note and then the MIDI player
+# could make them distinct by changing the instrument, etc)
 $set->to_midi(
     $measures,
-    sustain => 1,
-    track   => [ {}, { note => 67 }, { note => 72 } ]
+    chan    => 9,    # drum
+    sustain => 0,
+    track   => [ { note => 60 }, { note => 67 }, { note => 68 } ]
 )->write_to_file($filename);
 
-sub mainpattern { filter_pattern(5, $BPM, 300), 8 }
-
-sub nextpattern {
-    my ($self, %param) = @_;
-    my $id     = $self->id;
-    my $voices = $param{set}->voices;
-    my ($new, $onsets);
-  AGAIN: {
-        $new = filter_pattern(3 + int rand 5, $BPM, 100);
-        for my $n (0 .. $id - 1) {
-            redo AGAIN
-              if compare_onsets($new, $voices->[$n]->pattern) >= 0.5;
-        }
-    }
-    return $new, 8;
-}
-
-# what beat patterns change in what measure? show this
-my @prev;
+# show what the patterns are in each measure where a pattern changes
+# (there are also text_event in the MIDI to help locate the rhythms
+# should this script by accident produce something good)
 $set->changes(
     divisor => $BPM,
     max     => $measures,
     header  => sub { say '# measure ' . $_[0] },
     voice   => sub {
-        my ($id, $bp, $new) = @_;
-        my $bs   = beatstring($bp);
-        my $same = $new && $bs eq ($prev[$id] // '');
-        say join "\t", $id, $bs, ($new ? 'n' : ''), ($same ? 'r' : '');
-        $prev[$id] = $bs;
+        my ($mm, $id, $bp, $bs, $new, $repeat) = @_;
+        # 'n' if there was a pattern change event for this voice, 'r' if
+        # that change event did not actually change the pattern
+        # (probably uncommon in this script)
+        say join "\t", $id, $bs,
+          ($new ? 'n' : '') . ($repeat ? 'r' : '');
     }
 );

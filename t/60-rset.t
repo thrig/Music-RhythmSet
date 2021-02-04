@@ -1,7 +1,7 @@
 #!perl
 
 use 5.24.0;
-use Test::Most tests => 49;
+use Test::Most tests => 52;
 my $deeply = \&eq_or_diff;
 
 use Music::RhythmSet;
@@ -19,7 +19,7 @@ my $next_set;
 my $pattern = [];
 
 $set->add(
-    { pattern => [qw/0 1/], ttl => 2, id => 42 },
+    { pattern => [qw/0 1/], ttl => 3, id => 42 },
     {   pattern => [qw/1 0/],
         ttl     => 1,
         next    => sub {
@@ -28,7 +28,7 @@ $set->add(
             $measure  = $param{measure};
             $next_set = $param{set};
             $pattern  = $param{pattern};
-            [qw/1 0/], 4;
+            [qw/1 0/], 1;
         }
     }
 );
@@ -41,13 +41,15 @@ for my $v ($set->voices->@*) {
     is($v->id, $id++);
 }
 
-$set->advance;
-$set->advance(1, foo => 'bar');
+# ->advance can croak in RhythmSet.pm and also in Voice.pm
+lives_ok { $set->advance(1, foo => 'bar') };
 
-is($foo,     'bar');
-is($measure, 1);       # first measure is 0
+is($foo, 'bar');
 ok(defined $next_set and refaddr($set) eq refaddr($next_set));
 $deeply->($pattern, [qw/1 0/]);
+
+lives_ok { $set->advance };
+is($measure, 1);    # first measure is 0
 
 for my $v ($set->voices->@*) {
     is($v->measure, 2);
@@ -124,40 +126,68 @@ dies_ok { $set->to_ly(0) };
 dies_ok { $set->to_midi };
 dies_ok { $set->to_midi(0) };
 
-# ->changes ... TODO better tests than this?
-my $beat = 0;
-my @changes;
-lives_ok {
-    $set->changes(
-        header => sub { $beat = shift },
-        voice  => sub { push @changes, \@_ },
-    )
-};
-is($beat, 2);
+# ->changes, two-beat measures in two voices
+my @measures;
+my @args;
+$set = Music::RhythmSet->new->add(
+    {   next => sub { [qw/1 1/], 3 }
+    },
+    {   next => sub {
+            state $i = 0;
+            [ split '', sprintf "%02b", $i++ ], 2;
+        }
+    },
+)->advance(6)->changes(
+    divisor => 2,
+    max     => 4,
+    header  => sub { push @measures, $_[0] },
+    voice   => sub {
+        my (@rest) = @_;
+        my $id     = splice @rest, 1, 1;
+        push $args[$id]->@*, [@rest];
+    },
+);
+
+$deeply->(\@measures, [ 0, 2, 3 ]);
 $deeply->(
-    \@changes,
-    [   [ 0, [ 0, 1 ], 1 ],        # voice 0, pattern, is-new?
-        [ 1, [ 1, 0 ], 1 ],        # voice 1
-        [ 0, [ 0, 1 ], undef ],    # TTL 2 -> undef is-new?
-        [ 1, [ 1, 0 ], 1 ]         # TTL 1 so this voice "changed"
+    \@args,
+    # voice 0 -- ttl 3, always same pattern
+    [   [   [ 0, [ 1, 1 ], "xx", 1,     undef ],    # changed
+            [ 2, [ 1, 1 ], "xx", undef, undef ],    # -- other voice
+            [ 3, [ 1, 1 ], "xx", 1,     1 ],        # changed repeat
+        ],
+        # voice 1 -- ttl 2, pattern counts binary
+        [   [ 0, [ 0, 0 ], "..", 1,     undef ],    # changed
+            [ 2, [ 0, 1 ], ".x", 1,     undef ],    # changed
+            [ 3, [ 0, 1 ], ".x", undef, undef ],    # -- other voice
+        ],
     ]
 );
 
-# otherwise voice 0 would croak
-$set->voices->[0]->next(sub { [ 1, 1 ], 3 });
-$set->advance(10);
+@measures = @args = ();
 
-my $measures = 0;
-lives_ok {
-    $set->changes(
-        divisor => 2,                     # two beats per measure
-        max     => 2,
-        header  => sub { $measures++ },
-        voice   => sub { $pattern = $_[1] if $_[0] eq 0 },
-    )
-};
-is($measures, 3);
-$deeply->($pattern, [ 1, 1 ]);
+# without a divisor (the default) the "measure" is a single beat
+$set = Music::RhythmSet->new->add(
+    {   next => sub {
+            state $i = 0;
+            $i ^= 1;
+            [$i], 1;
+        }
+    },
+)->advance(3)->changes(
+    header => sub { push @measures, $_[0] },
+    # NOTE \@_ may yeild wacky results, instead make a copy of what's on
+    # that stack
+    voice => sub { push @args, [@_] },
+);
+$deeply->(\@measures, [ 0, 1, 2 ]);
+$deeply->(
+    \@args,
+    [   [ 0, 0, [1], "x", 1, undef ],
+        [ 1, 0, [0], ".", 1, undef ],
+        [ 2, 0, [1], "x", 1, undef ],
+    ]
+);
 
 dies_ok { $set->changes };
 dies_ok {
@@ -169,3 +199,10 @@ dies_ok {
 dies_ok {
     $set->changes(voice => sub { "foo" }, header => {})
 };
+
+# voicel, sugar for ->new->add(...)
+$set = Music::RhythmSet->new(
+    voicel => [ { pattern => [ 1, 0, 1 ] } ]);
+$deeply->($set->voices->[0]->pattern, [ 1, 0, 1 ]);
+dies_ok { Music::RhythmSet->new(voicel => undef) };
+dies_ok { Music::RhythmSet->new(voicel => {}) };

@@ -3,7 +3,7 @@
 # these utility routines are pretty light on error checking
 
 use 5.24.0;
-use Test::Most tests => 24;
+use Test::Most tests => 27;
 my $deeply = \&eq_or_diff;
 
 use Music::RhythmSet::Util
@@ -15,13 +15,15 @@ dies_ok { beatstring({}) };
 
 is(sprintf('%.0f', compare_onsets([qw/1 1/], [qw/1 1/])), 1);
 is(sprintf('%.1f', compare_onsets([qw/1 1/], [qw/1 0/])), 0.5);
+is(sprintf('%.0f', compare_onsets([qw/0 1/], [qw/1 1/])), 1);
 dies_ok { compare_onsets([], []) };
 
-# odds are, anyways
+# odds are, anyways. downside: slow
 $deeply->(
     filter_pattern(4, 16, 10000),
     [ 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0 ]
 );
+lives_ok { filter_pattern(4, 16, 1000, 0, 1) };
 
 my ($on, @slots, $total);
 for (1 .. 100) {
@@ -57,3 +59,4 @@ is( sprintf("%.1f",
         score_stddev([qw/1 1 1 1 0 0 0 0 0 0 0 0 0 0 0 0/])),
     5.2
 );
+dies_ok { score_stddev([]) };
