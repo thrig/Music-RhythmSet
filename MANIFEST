@@ -1,6 +1,8 @@
 Build.PL
 Changes
 MANIFEST
+META.json
+META.yml
 README
 eg/beatinator
 eg/variance

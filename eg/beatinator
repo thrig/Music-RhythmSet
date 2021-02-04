@@ -5,13 +5,11 @@
 
 use 5.24.0;
 use warnings;
-
 use Music::RhythmSet;
 use Music::RhythmSet::Util
   qw(beatstring compare_onsets filter_pattern);
 
-my $filename = shift
-  // die "Usage: $0 midi-file [measure-count]\n";
+my $filename = shift // die "Usage: $0 midi-file [measure-count]\n";
 my $measures = shift // 64;
 # all voices use the same number of beats per measure (this need not
 # be true)
@@ -20,7 +18,7 @@ my $rest = [ (0) x $BPM ];
 
 # the main voice changes less often than the other voices (every 16
 # measures), always uses five onsets per measure, and has less variance
-# (300 trials) in possible rhythms
+# (300 trials, see the 'eg/variance' script) in possible rhythms
 sub mainpattern { filter_pattern(5, $BPM, 300), 16 }
 
 # secondary voices
@@ -30,7 +28,7 @@ sub nextpattern {
     my $voices = $param{set}->voices;
     my ($new, $onsets);
   CHOICE: {
-        # varied numbers of beats, increased variance (only 100 trials)
+        # varied number of onsets, increased variance (only 100 trials)
         $new = filter_pattern(3 + int rand 5, $BPM, 100);
         for my $n (0 .. $id - 1) {
             # NOTE if the percentage is too low or there are too many

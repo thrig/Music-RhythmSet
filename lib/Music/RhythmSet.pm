@@ -344,7 +344,7 @@ measure count set individually.
 =item B<to_ly> I<measure-count> I<param>
 
 Returns an array reference of strings that contain the replay log
-formated for lilypond.
+formatted for lilypond.
 
   my $i = 0;
   for my $s ($set->to_ly(32)->@*) {
