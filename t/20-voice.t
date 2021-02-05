@@ -10,7 +10,7 @@
 
 use 5.24.0;
 use Data::Dumper;
-use Test::Most tests => 73;
+use Test::Most tests => 74;
 my $deeply = \&eq_or_diff;
 
 use MIDI;
@@ -89,6 +89,11 @@ domidi(
 # METHODS
 
 my $voice = Music::RhythmSet::Voice->new(replay => $replay);
+
+# ->stash attribute (to confirm that it exists; it is not used by
+# modules in this distribution)
+$voice->stash(42);
+is($voice->stash, 42);
 
 # lilypond
 is($voice->to_ly(4), <<'EOLY');

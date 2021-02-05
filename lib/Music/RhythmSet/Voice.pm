@@ -23,6 +23,7 @@ has next    => (is => 'rw');
 has measure => (is => 'rw', default => sub { 0 });
 has pattern => (is => 'rw');
 has replay  => (is => 'rw', default => sub { [] });
+has stash   => (is => 'rw');
 has ttl     => (is => 'rw', default => sub { 0 });
 
 # perldoc Moo
@@ -429,6 +430,33 @@ B<measure> is used for something else in this code.
 An array reference of I<pattern> and I<ttl> pairs, usually created by
 calling B<advance> for some number of measures with a suitable B<next>
 callback set.
+
+=item B<stash>
+
+A place for the caller to store whatever. A B<next> callback could save
+the current callback into the stash, and restore it after some number of
+measures have passed. For example, a voice could vary between a rhythm
+for seven measures and silence for one:
+
+  sub silence {
+      my ($self) = @_;
+      $self->next($self->stash);    # restore previous
+      [ (0) x 16 ], 1
+  }
+
+  sub voice {
+      my ($self) = @_;
+      $self->stash($self->next);    # save current method
+      $self->next(\&silence);       # go quiet
+      [ qw/1 0 0 0 1 0 0 0 1 0 0 0 1 0 1 0/ ], 7
+  }
+
+  Music::RhythmSet::Voice->new( next => \&voice );
+
+The above code uses the stash as a scalar; a hash reference would make
+more sense if multiple values need be passed around.
+
+This attribute is not used by code in this distribution.
 
 =item B<ttl>
 

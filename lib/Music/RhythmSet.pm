@@ -17,6 +17,7 @@ use namespace::clean;
 use Music::RhythmSet::Voice;
 
 has curid  => (is => 'rw', default => sub { 0 });
+has stash  => (is => 'rw');
 has voices => (is => 'rw', default => sub { [] });
 
 # perldoc Moo
@@ -235,6 +236,15 @@ Internal variable. ID (or array index) for the next voice to be added
 with the B<add> method. Should not be changed unless you are manually
 editing the B<voices> list.
 
+=item B<stash>
+
+A place for the caller to store whatever. The B<advance> method passes
+the current set object down to B<next> callback code as the I<set>
+parameter; individual voices could use the set object stash as a shared
+variable store.
+
+This attribute is not used by code in this distribution.
+
 =item B<voices>
 
 Array reference of voices. These are L<Music::RhythmSet::Voice> objects.
@@ -266,7 +276,7 @@ I<param> is used to pass data down to the B<advance> method of
 L<Music::RhythmSet::Voice> and from there into the B<next> callback. In
 particular the I<set> attribute will contain a reference to the C<$set>
 object involved, in the event voices need to query other voices during a
-B<next> callback.
+B<next> callback, or access the set B<stash>.
 
 =item B<changes> I<param>
 

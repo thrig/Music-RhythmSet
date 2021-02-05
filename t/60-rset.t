@@ -1,13 +1,16 @@
 #!perl
 
 use 5.24.0;
-use Test::Most tests => 52;
+use Test::Most tests => 53;
 my $deeply = \&eq_or_diff;
 
 use Music::RhythmSet;
 use Scalar::Util qw(refaddr);
 
 my $set = Music::RhythmSet->new;
+
+$set->stash("foo");
+is($set->stash, "foo");
 
 is($set->curid, 0);
 $deeply->($set->voices, []);
