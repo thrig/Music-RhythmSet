@@ -15,9 +15,6 @@ use namespace::clean;
 
 use constant { NOTE_ON => 1, NOTE_OFF => 0 };
 
-use parent qw(Exporter);
-our @EXPORT_OK = qw(duration flatten ocvec onset_count write_midi);
-
 has id      => (is => 'rw');
 has next    => (is => 'rw');
 has measure => (is => 'rw', default => sub { 0 });
@@ -36,70 +33,6 @@ sub BUILD {
           and ref $args->{pattern} eq 'ARRAY';
         push $self->replay->@*, [ $args->{pattern}, $args->{ttl} ];
     }
-}
-
-########################################################################
-#
-# FUNCTIONS
-
-# TODO 'changes' but for a single voice... can easily enough put a voice
-# into a set then call changes there, meanwhile
-
-sub duration {
-    my ($replay) = @_;
-    croak "no replay log"
-      unless defined $replay and ref $replay eq 'ARRAY';
-    my $measures = 0;
-    my $beats    = 0;
-    for my $ref ($replay->@*) {
-        $measures += $ref->[1];
-        $beats    += $ref->[0]->@* * $ref->[1];
-    }
-    return $measures, $beats;
-}
-
-sub flatten {
-    my ($replay) = @_;
-    croak "no replay log"
-      unless defined $replay and ref $replay eq 'ARRAY';
-    return [ map { ($_->[0]->@*) x $_->[1] } $replay->@* ];
-}
-
-# "onset-coordinate vector" notation for a pattern
-sub ocvec {
-    my ($pat) = @_;
-    croak "no pattern set"
-      unless defined $pat and ref $pat eq 'ARRAY';
-    my @set;
-    my $i = 0;
-    for my $v ($pat->@*) {
-        push @set, $i if $v == NOTE_ON;
-        $i++;
-    }
-    return \@set;
-}
-
-sub onset_count {
-    my ($pat) = @_;
-    croak "no pattern set"
-      unless defined $pat and ref $pat eq 'ARRAY';
-    my $onsets = 0;
-    for my $v ($pat->@*) {
-        $onsets++ if $v == NOTE_ON;
-    }
-    return $onsets;
-}
-
-sub write_midi {
-    my ($file, $track, %param) = @_;
-    $param{format} //= 1;
-    $param{ticks}  //= 96;
-    MIDI::Opus->new(
-        {   format => $param{format},
-            ticks  => $param{ticks},
-            tracks => ref $track eq 'ARRAY' ? $track : [$track]
-        }
-    )->write_to_file($file);
 }
 
 ########################################################################
@@ -131,6 +64,9 @@ sub advance {
     $self->measure($measure);
     return $self;
 }
+
+# TODO 'changes' but for a single voice... can easily enough put a voice
+# into a set then call changes there, meanwhile
 
 sub clone {
     my ($self, $id) = @_;
@@ -172,15 +108,15 @@ sub to_ly {
     my $ly = '';
 
     for my $ref ($replay->@*) {
-        my ($bp, $ttl) = $ref->@*;
+        my ($bpat, $ttl) = $ref->@*;
         $ttl = $maxm if $ttl > $maxm;
-        $ly .= "  % v$id " . join('', $bp->@*) =~ tr/10/x./r . " $ttl\n";
+        $ly .= "  % v$id " . join('', $bpat->@*) =~ tr/10/x./r . " $ttl\n";
         if ($param{time}) {
-            $ly .= '  \time ' . $bp->@* . '/' . $param{time} . "\n";
+            $ly .= '  \time ' . $bpat->@* . '/' . $param{time} . "\n";
         }
         my $s = ' ';
-        for my $v ($bp->@*) {
-            if ($v == NOTE_ON) {
+        for my $x ($bpat->@*) {
+            if ($x == NOTE_ON) {
                 $s .= ' ' . $param{note} . $param{dur};
             } else {
                 $s .= ' ' . $param{rest} . $param{dur};
@@ -217,16 +153,16 @@ sub to_midi {
     my $leftover = 0;
 
     for my $ref ($replay->@*) {
-        my ($bp, $ttl) = $ref->@*;
+        my ($bpat, $ttl) = $ref->@*;
         $ttl = $maxm if $ttl > $maxm;
         push $events->@*,
           [ 'text_event', $leftover,
-            "v$id " . join('', $bp->@*) =~ tr/10/x./r . " $ttl\n"
+            "v$id " . join('', $bpat->@*) =~ tr/10/x./r . " $ttl\n"
           ];
         $delay = 0;
         my ($onsets, $open, @midi);
-        for my $v ($bp->@*) {
-            if ($v == NOTE_ON) {
+        for my $x ($bpat->@*) {
+            if ($x == NOTE_ON) {
                 $onsets++;
                 if (defined $open) {
                     push @midi, [ 'note_off', $delay, $param{chan}, $open, 0 ];
@@ -262,7 +198,7 @@ sub to_midi {
         # delay from trailing rests *or* a full measure of rest
         $leftover = $delay;
         # remainder of full measures of rest, if any
-        $leftover += $bp->@* * $param{dur} * ($ttl - 1) unless $onsets;
+        $leftover += $bpat->@* * $param{dur} * ($ttl - 1) unless $onsets;
         $maxm     -= $ttl;
         last if $maxm <= 0;
     }
@@ -316,6 +252,36 @@ sub to_midi {
     return $track;
 }
 
+sub to_string {
+    my ($self, $maxm, %param) = @_;
+    croak "need measure count" unless defined $maxm and $maxm >= 1;
+
+    my $replay = $self->replay;
+    croak "empty replay log"
+      unless defined $replay
+      and ref $replay eq 'ARRAY'
+      and $replay->@*;
+
+    $param{sep} //= "\t";
+    $param{rs}  //= "\n";
+
+    my $str  = '';
+    my $id   = $self->id // '';
+    my $beat = 0;
+
+    for my $ref ($replay->@*) {
+        my ($bpat, $ttl) = $ref->@*;
+        $ttl = $maxm if $ttl > $maxm;
+        my $bstr = join('', $bpat->@*) =~ tr/10/x./r;
+        $str .= join($param{sep}, $beat, $id, $bstr, $ttl) . $param{rs};
+        $beat += $ttl * $bpat->@*;
+        $maxm -= $ttl;
+        last if $maxm <= 0;
+    }
+
+    return $str;
+}
+
 1;
 __END__
 
@@ -327,7 +293,8 @@ Music::RhythmSet::Voice - a rhythmic line
 
   use MIDI;
   use Math::Random::Discrete;
-  use Music::RhythmSet::Voice qw(write_midi);
+  use Music::RhythmSet::Util qw(write_midi);
+  use Music::RhythmSet::Voice;
   
   # different selection odds for three patterns
   my $ppick = Math::Random::Discrete->new(
@@ -433,10 +400,10 @@ callback set.
 
 =item B<stash>
 
-A place for the caller to store whatever. A B<next> callback could save
-the current callback into the stash, and restore it after some number of
-measures have passed. For example, a voice could vary between a rhythm
-for seven measures and silence for one:
+A place for the caller to store whatever. For example, a B<next>
+callback could save the current callback into the stash, and restore it
+after some number of measures have passed. A voice could vary between a
+rhythm for seven measures and silence for one using the stash:
 
   sub silence {
       my ($self) = @_;
@@ -460,37 +427,8 @@ This attribute is not used by code in this distribution.
 
 =item B<ttl>
 
-Time-to-live of the current B<pattern>.
-
-=back
-
-=head1 FUNCTIONS
-
-=over 4
-
-=item B<duration> I<replay-log>
-
-Returns a list consisting of the number of measures and the total number
-of beats in those measures given a I<replay-log>.
-
-=item B<flatten> I<replay-log>
-
-Flattens the I<replay-log> into a single array reference of beats.
-
-=item B<ocvec> I<pattern>
-
-Converts a I<pattern> into "onset-coordinate vector" notation. This
-format is suitable to be fed to L<Music::AtonalUtil>.
-
-=item B<onset_count> I<pattern>
-
-Returns a count of how many onsets there are in the I<pattern>.
-
-=item B<write_midi> I<filename> I<track> [ I<params> ]
-
-A small wrapper around L<MIDI::Opus> that writes the return value of
-B<to_midi> to a file. The optional I<params> may include I<format>
-(probably should be C<1>) and I<ticks> (consult the MIDI specification).
+Time-to-live of the current B<pattern>. Probably should not be
+changed manually.
 
 =back
 
@@ -513,7 +451,7 @@ callback calls and you forget to call B<advance>.
 Clones the object with a I<new-id> that if unset will be the same B<id>
 of the current object, for better or worse.
 
-=item B<to_ly> I<count> [ I<param> ]
+=item B<to_ly> I<measure-count> [ I<param> ]
 
 Returns I<count> measures worth of the replay log formatted for
 lilypond (a text string). Parameters include I<dur> for the note
@@ -528,7 +466,7 @@ will for a I<pattern> 12 beats in length prefix those notes with C<\time
 12/16>. This is limited: there is no way to turn C<12/16> into the more
 common C<6/8> or C<3/4> forms.
 
-=item B<to_midi> I<count> [ I<param> ]
+=item B<to_midi> I<measure-count> [ I<param> ]
 
 Encodes I<count> measures of the replay log as MIDI and returns a
 L<MIDI::Track> object. Parameters include I<chan>, I<dur>, I<note>,
@@ -543,6 +481,18 @@ different duration than in other repeats of the same measure.
 Enabling I<notext> will increase the end-of-track raggedness; a MIDI
 C<text_event> is used to demark where the track ends that I<notext>
 will remove.
+
+=item B<to_string> I<measure-count> [ I<param> ]
+
+Converts the replay log of the voice (if any) into a custom text
+format. I<param> may contain I<sep> used as a field separator and I<rs>
+used as a record separator. The format is tab separated by default,
+with the fields:
+
+  beat-count voice-id beatstring ttl
+
+This allows a numeric sort on the first column to order the records for
+multiple voices together in a timeline view.
 
 =back
 

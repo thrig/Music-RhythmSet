@@ -1,8 +1,7 @@
 # -*- Perl -*-
 #
 # various functions related to the generation and comparison of patterns
-# of beats. a pattern of beats is assumed to be an array reference of
-# zeros and ones
+# of beats, and etc
 
 package Music::RhythmSet::Util;
 our $VERSION = '0.01';
@@ -16,13 +15,13 @@ use constant { NOTE_ON => 1, NOTE_OFF => 0 };
 
 use parent qw(Exporter);
 our @EXPORT_OK =
-  qw(beatstring compare_onsets filter_pattern rand_onsets score_fourfour score_stddev);
+  qw(beatstring compare_onsets duration filter_pattern flatten ocvec onset_count rand_onsets score_fourfour score_stddev write_midi);
 
 sub beatstring {
-    my ($pat) = @_;
+    my ($bpat) = @_;
     croak "no pattern set"
-      unless defined $pat and ref $pat eq 'ARRAY';
-    join('', $pat->@*) =~ tr/10/x./r;
+      unless defined $bpat and ref $bpat eq 'ARRAY';
+    return join('', $bpat->@*) =~ tr/10/x./r;
 }
 
 sub compare_onsets {
@@ -39,21 +38,66 @@ sub compare_onsets {
     return $same / $onsets;
 }
 
+sub duration {
+    my ($replay) = @_;
+    croak "no replay log"
+      unless defined $replay and ref $replay eq 'ARRAY';
+    my $measures = 0;
+    my $beats    = 0;
+    for my $ref ($replay->@*) {
+        $measures += $ref->[1];
+        $beats    += $ref->[0]->@* * $ref->[1];
+    }
+    return $measures, $beats;
+}
+
 sub filter_pattern {
     my ($onsets, $total, $trials, $fudge, $nozero) = @_;
     $fudge //= 0.0039;
     my $best = ~0;
-    my $pattern;
+    my $bpat;
     for (1 .. $trials) {
         my $new   = &rand_onsets;
         my $score = score_stddev($new) + score_fourfour($new) * $fudge;
         next if $nozero and $score == 0;
         if ($score < $best) {
-            $best    = $score;
-            $pattern = $new;
+            $best = $score;
+            $bpat = $new;
         }
     }
-    return $pattern;
+    return $bpat;
+}
+
+sub flatten {
+    my ($replay) = @_;
+    croak "no replay log"
+      unless defined $replay and ref $replay eq 'ARRAY';
+    return [ map { ($_->[0]->@*) x $_->[1] } $replay->@* ];
+}
+
+# "onset-coordinate vector" notation for a pattern
+sub ocvec {
+    my ($bpat) = @_;
+    croak "no pattern set"
+      unless defined $bpat and ref $bpat eq 'ARRAY';
+    my @set;
+    my $i = 0;
+    for my $x ($bpat->@*) {
+        push @set, $i if $x == NOTE_ON;
+        $i++;
+    }
+    return \@set;
+}
+
+sub onset_count {
+    my ($bpat) = @_;
+    croak "no pattern set"
+      unless defined $bpat and ref $bpat eq 'ARRAY';
+    my $onsets = 0;
+    for my $x ($bpat->@*) {
+        $onsets++ if $x == NOTE_ON;
+    }
+    return $onsets;
 }
 
 sub rand_onsets {
@@ -93,16 +137,14 @@ sub score_fourfour {
 sub score_stddev {
     my $beats = shift;
     my $len   = $beats->@*;
-    my $sum   = 0;
     my @deltas;
     for my $i (0 .. $beats->$#*) {
-        if ($beats->[$i] == 1) {
+        if ($beats->[$i] == NOTE_ON) {
             my $j = $i + 1;
             while (1) {
                 if ($beats->[ $j % $len ] == NOTE_ON) {
                     my $d = $j - $i;
                     push @deltas, $d;
-                    $sum += $d;
                     last;
                 }
                 $j++;
@@ -111,6 +153,19 @@ sub score_stddev {
     }
     croak "no onsets?! [@$beats]" unless @deltas;
     return stddevp(@deltas);
+}
+
+sub write_midi {
+    my ($file, $track, %param) = @_;
+    $param{format} //= 1;
+    $param{ticks}  //= 96;
+    MIDI::Opus->new(
+        {   format => $param{format},
+            ticks  => $param{ticks},
+            tracks => ref $track eq 'ARRAY' ? $track : [$track]
+        }
+    )->write_to_file($file);
+    return;
 }
 
 1;
@@ -123,8 +178,8 @@ Music::RhythmSet::Util - pattern generation and classification functions
 =head1 DESCRIPTION
 
 Various functions related to the generation and comparison of patterns
-of beats. A I<pattern> of beats is assumed to be an array reference of
-zeros and ones, e.g. for 4/4 time in 16th notes
+of beats, and so forth. A I<pattern> of beats is assumed to be an array
+reference of zeros and ones, e.g. for 4/4 time in 16th notes
 
   [ 1,0,0,0, 1,0,0,0, 1,0,0,0, 1,0,0,0 ]
 
@@ -148,6 +203,11 @@ patterns of the same length.
 
   compare_onsets([1,0,0,0],[1,0,1,0])
 
+=item B<duration> I<replay-log>
+
+Returns a list consisting of the number of measures and the total number
+of beats in those measures given a I<replay-log>.
+
 =item B<filter_pattern> I<onsets> I<total> I<trials> ...
 
 Generates I<trials> number of patterns via B<rand_onsets> and selects
@@ -155,6 +215,19 @@ for the "best" pattern by the lowest combined score of B<score_stddev>
 and B<score_fourfour>. This routine will need to be profiled and tuned
 for the need at hand; see the C<eg/variance> script under this module's
 distribution for one way to study how the function behaves.
+
+=item B<flatten> I<replay-log>
+
+Flattens the given I<replay-log> into a single array reference of beats.
+
+=item B<ocvec> I<pattern>
+
+Converts a I<pattern> into "onset-coordinate vector" notation. This
+format is suitable to be fed to L<Music::AtonalUtil>.
+
+=item B<onset_count> I<pattern>
+
+Returns a count of how many onsets there are in the I<pattern>.
 
 =item B<rand_onsets> I<onsets> I<total>
 
@@ -193,6 +266,12 @@ regular and the second probably too irregular.
 
 This method should work on patterns of any length (CPU and memory
 permitting).
+
+=item B<write_midi> I<filename> I<track> [ I<params> ]
+
+A small wrapper around L<MIDI::Opus> that writes a MIDI track (or
+tracks) to a file. The optional I<params> may include I<format>
+(probably should be C<1>) and I<ticks> (consult the MIDI specification).
 
 =back
 

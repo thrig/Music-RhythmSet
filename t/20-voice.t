@@ -10,35 +10,16 @@
 
 use 5.24.0;
 use Data::Dumper;
-use Test::Most tests => 74;
+use Test::Most tests => 65;
 my $deeply = \&eq_or_diff;
 
-use MIDI;
-use Music::RhythmSet::Voice
-  qw(duration flatten ocvec onset_count write_midi);
+use Music::RhythmSet::Util qw(write_midi);
+use Music::RhythmSet::Voice;
 
 my @playback;
 
-########################################################################
-#
-# FUNCTIONS
-
 my $replay =
   [ [ [qw/1 1 0/], 2 ], [ [qw/1 1 1/], 1 ], [ [qw/0 1/], 3 ] ];
-
-$deeply->([ duration($replay) ], [ 6, 15 ]);
-
-$deeply->(
-    flatten($replay), [qw/1 1 0  1 1 0   1 1 1   0 1  0 1  0 1/]
-);
-
-$deeply->(
-    #         0 1 2 3 4 5 6 7 8 9 10
-    ocvec([qw/1 0 0 1 0 0 1 0 0 0 1 0/]),
-    [qw/0 3 6 10/]
-);
-
-is(onset_count([qw/1 0 0 1 0 0 1 0 0 0 1 0/]), 4);
 
 sub domidi {
     my ($file, $fn) = @_;
@@ -48,45 +29,6 @@ sub domidi {
     ok(-f $file);
     push @playback, $file;
 }
-
-domidi(
-    't/refpitch.midi',
-    sub {
-        my ($file) = @_;
-        lives_ok {
-            my $track = MIDI::Track->new;
-            $track->events([qw/text_event 0 test/],
-                [qw/note_on 0 0 69 100/], [qw/note_off 288 0 69 0/],);
-            write_midi($file, $track, format => 0, ticks => 96);
-        };
-    }
-);
-
-# a lot of code to test a little addition to write_midi
-domidi(
-    't/threetrack.midi',
-    sub {
-        my ($file) = @_;
-        lives_ok {
-            my $note = 42;
-            my @tracks;
-            for my $i (1 .. 3) {
-                my $track = MIDI::Track->new;
-                $track->events(
-                    (   [ 'note_on',  0,        0, $note + 12 * $i, 100 ],
-                        [ 'note_off', 288 / $i, 0, $note + 12 * $i, 0 ]
-                    ) x $i
-                );
-                push @tracks, $track;
-            }
-            write_midi($file, \@tracks);
-        };
-    }
-);
-
-########################################################################
-#
-# METHODS
 
 my $voice = Music::RhythmSet::Voice->new(replay => $replay);
 
@@ -115,8 +57,7 @@ EOLY
     };
 
     my $v2 = $voice->clone(42);
-    is($v2->to_ly(1, dur => 8, note => 'bes', rest => 's'),
-        <<'MORLOCK');
+    is($v2->to_ly(1, dur => 8, note => 'bes', rest => 's'), <<'MORLOCK');
   % v42 xx. 1
   bes8 bes8 s8
 MORLOCK
@@ -140,6 +81,16 @@ MORLOCK
   \time 4/4
   c4 r4 c4 r4
 EOLY
+}
+
+# ->to_string
+{
+    is($voice->to_string(6), "0\t\txx.\t2\n6\t\txxx\t1\n9\t\t.x\t3\n");
+
+    my $v2 = $voice->clone(7);
+    is( $v2->to_string(4, rs => "\r", sep => ' '),
+        "0 7 xx. 2\r6 7 xxx 1\r9 7 .x 1\r"
+    );
 }
 
 # ->advance (and thus the next callback)
@@ -315,8 +266,7 @@ write_midi('t/silence-pa.midi', $track);
 # less nothing
 $track = audit_track(
     sub {
-        Music::RhythmSet::Voice->new(pattern => [0], ttl => 1)
-          ->to_midi(1, notext => 1);
+        Music::RhythmSet::Voice->new(pattern => [0], ttl => 1)->to_midi(1, notext => 1);
     },
     {   '_dur'       => 0,
         '_events'    => 2,
@@ -329,8 +279,8 @@ write_midi('t/silence-re.midi', $track);
 # more nothing
 $track = audit_track(
     sub {
-        Music::RhythmSet::Voice->new(next => sub { [qw/0 0 0/], 2 })
-          ->advance(4)->to_midi(3);
+        Music::RhythmSet::Voice->new(next => sub { [qw/0 0 0/], 2 })->advance(4)
+          ->to_midi(3);
     },
     {   '_dur'       => 180,
         '_events'    => 5,
@@ -358,14 +308,6 @@ dies_ok {
 dies_ok {
     Music::RhythmSet::Voice->new(pattern => {}, ttl => 42)
 };
-dies_ok { duration() };
-dies_ok { duration({}) };
-dies_ok { flatten() };
-dies_ok { flatten({}) };
-dies_ok { ocvec() };
-dies_ok { ocvec({}) };
-dies_ok { onset_count() };
-dies_ok { onset_count({}) };
 
 # no or an invalid 'next' callback
 $voice = Music::RhythmSet::Voice->new;
@@ -398,6 +340,8 @@ dies_ok { $voice->to_ly };
 dies_ok { $voice->to_ly(-1) };
 dies_ok { $voice->to_midi };
 dies_ok { $voice->to_midi(-1) };
+dies_ok { $voice->to_string };
+dies_ok { $voice->to_string(-1) };
 
 # replay log is no bueno, or empty (did you forget to call ->advance to
 # populate it? asking for a friend)
@@ -405,12 +349,15 @@ $voice = Music::RhythmSet::Voice->new;
 $voice->replay(undef);
 dies_ok { $voice->to_ly(1) };
 dies_ok { $voice->to_midi(1) };
+dies_ok { $voice->to_string(1) };
 $voice->replay({});
 dies_ok { $voice->to_ly(1) };
 dies_ok { $voice->to_midi(1) };
+dies_ok { $voice->to_string(1) };
 $voice->replay([]);
 dies_ok { $voice->to_ly(1) };
 dies_ok { $voice->to_midi(1) };
+dies_ok { $voice->to_string(1) };
 
 if (defined $ENV{AUTHOR_TEST_JMATES_MIDI}) {
     diag "playback ...";

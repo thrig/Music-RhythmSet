@@ -33,6 +33,10 @@ sub BUILD {
     }
 }
 
+########################################################################
+#
+# METHODS
+
 # the 'id' attribute tries to match the array index in 'voices' though
 # may not if the caller manually fiddles with either the voices list
 # or the ID values (in which case they get what they deserve when
@@ -60,9 +64,9 @@ sub advance {
     # system to resolve any inter-voice pattern generation difficulties,
     # but that's not supported here)
     for (1 .. $count // 1) {
-        for my $v ($self->voices->@*) {
+        for my $voice ($self->voices->@*) {
             $param{set} = $self;
-            $v->advance(1, %param);
+            $voice->advance(1, %param);
         }
     }
     return $self;
@@ -86,10 +90,10 @@ sub changes {
     for my $voice ($self->voices->@*) {
         my $beat = 0;
         for my $ref ($voice->replay->@*) {
-            my ($bp, $ttl) = $ref->@*;
+            my ($bpat, $ttl) = $ref->@*;
             # build a priority queue of when voices change their pattern
-            grpriq_add($queue, [ $voice->id, $bp ], $beat);
-            $beat += $ttl * $bp->@*;
+            grpriq_add($queue, [ $voice->id, $bpat ], $beat);
+            $beat += $ttl * $bpat->@*;
         }
     }
     my (@curpat, @curpat_str);
@@ -100,14 +104,14 @@ sub changes {
         last if $measure >= $param{max};
         my (@changed, @repeat);
         for my $ref ($entry->[0]->@*) {
-            my ($id, $bp) = $ref->@*;
+            my ($id, $bpat) = $ref->@*;
             $changed[$id] = 1;
-            $curpat[$id]  = $bp;
-            my $bs = join('', $bp->@*) =~ tr/10/x./r;
-            if ($bs eq ($curpat_str[$id] // '')) {
+            $curpat[$id]  = $bpat;
+            my $bstr = join('', $bpat->@*) =~ tr/10/x./r;
+            if ($bstr eq ($curpat_str[$id] // '')) {
                 $repeat[$id] = 1;
             }
-            $curpat_str[$id] = $bs;
+            $curpat_str[$id] = $bstr;
         }
         $param{header}->($measure);
         for my $id (0 .. $#curpat) {
@@ -122,8 +126,8 @@ sub clone {
     my ($self) = @_;
     my $new = Music::RhythmSet->new(curid => scalar $self->curid);
     my @voices;
-    for my $v ($self->voices->@*) {
-        push @voices, $v->clone;
+    for my $voice ($self->voices->@*) {
+        push @voices, $voice->clone;
     }
     $new->voices(\@voices);
     return $new;
@@ -131,8 +135,8 @@ sub clone {
 
 sub measure {
     my ($self, $maxm) = @_;
-    for my $v ($self->voices->@*) {
-        $v->measure($maxm);
+    for my $voice ($self->voices->@*) {
+        $voice->measure($maxm);
     }
     return $self;
 }
@@ -140,14 +144,14 @@ sub measure {
 sub to_ly {
     my ($self, $maxm, %param) = @_;
     croak "need measure count" unless defined $maxm and $maxm >= 1;
-    for my $i (0 .. $self->voices->$#*) {
-        for my $p (qw/dur note rest time/) {
-            $param{voice}[$i]{$p} = $param{$p}
-              if exists $param{$p} and not exists $param{voice}[$i]{$p};
+    for my $id (0 .. $self->voices->$#*) {
+        for my $pram (qw/dur note rest time/) {
+            $param{voice}[$id]{$pram} = $param{$pram}
+              if exists $param{$pram} and not exists $param{voice}[$id]{$pram};
         }
     }
-    my $i = 0;
-    return [ map { $_->to_ly($maxm, $param{voice}->[ $i++ ]->%*) }
+    my $id = 0;
+    return [ map { $_->to_ly($maxm, $param{voice}->[ $id++ ]->%*) }
           $self->voices->@* ];
 }
 
@@ -156,20 +160,31 @@ sub to_midi {
     croak "need measure count" unless defined $maxm and $maxm >= 1;
     $param{format} //= 1;
     $param{ticks}  //= 96;
-    for my $i (0 .. $self->voices->$#*) {
-        for my $p (qw/chan dur note notext tempo sustain velo/) {
-            $param{track}[$i]{$p} = $param{$p}
-              if exists $param{$p} and not exists $param{track}[$i]{$p};
+    for my $id (0 .. $self->voices->$#*) {
+        for my $pram (qw/chan dur note notext tempo sustain velo/) {
+            $param{track}[$id]{$pram} = $param{$pram}
+              if exists $param{$pram} and not exists $param{track}[$id]{$pram};
         }
     }
-    my $i = 0;
+    my $id = 0;
     return MIDI::Opus->new(
         {   format => $param{format},
             ticks  => $param{ticks},
-            tracks =>
-              [ map { $_->to_midi($maxm, $param{track}->[ $i++ ]->%*) } $self->voices->@* ]
+            tracks => [
+                map { $_->to_midi($maxm, $param{track}->[ $id++ ]->%*) } $self->voices->@*
+            ]
         }
     );
+}
+
+sub to_string {
+    my ($self, $maxm, %param) = @_;
+    croak "need measure count" unless defined $maxm and $maxm >= 1;
+    my $str = '';
+    for my $voice ($self->voices->@*) {
+        $str .= $voice->to_string($maxm, %param);
+    }
+    return $str;
 }
 
 1;
@@ -265,14 +280,14 @@ to the constructor of L<Music::RhythmSet::Voice>. However, a
 caller-supplied I<id> attribute will ignored as this module manages
 those values itself.
 
-=item B<advance> I<count> I<param>
+=item B<advance> I<count> [ I<param> ]
 
 This call steps each of the voices forward by I<count> measures, which
 may result in new entries into the replay log for each voice, as well as
-callbacks being run to set new rhythms. Voices are advanced in turn from
-first to last in the voices list.
+B<next> callbacks being run to set new rhythms. Voices are advanced in
+turn from first to last in the voices list.
 
-I<param> is used to pass data down to the B<advance> method of
+I<param> is used to pass data to the B<advance> method of
 L<Music::RhythmSet::Voice> and from there into the B<next> callback. In
 particular the I<set> attribute will contain a reference to the C<$set>
 object involved, in the event voices need to query other voices during a
@@ -345,17 +360,18 @@ manual edits to the voices so that any subsequent B<advance> calls use
 the correct measure number in any relevant B<next> callback
 calculations.
 
-Voices that use measures (patterns) of different sizes will need their
+Voices that use measures (patterns) of different sizes may need their
 measure count set individually.
 
-=item B<to_ly> I<measure-count> I<param>
+=item B<to_ly> I<measure-count> [ I<param> ]
 
-Returns an array reference of strings that contain the replay log
-formatted for lilypond.
+Returns an array reference of strings that contain the replay log of
+each voice formatted for lilypond.
 
+  use File::Slurper 'write_text';
   my $i = 0;
-  for my $s ($set->to_ly(32)->@*) {
-      write_text("noise.$i.ly", $s);
+  for my $str ($set->to_ly(32)->@*) {
+      write_text("noise.$i.ly", $str);
       $i++;
   }
 
@@ -389,7 +405,7 @@ specific setting for a voice.
       ]
   );
 
-=item B<to_midi> I<measure-count> I<param>
+=item B<to_midi> I<measure-count> [ I<param> ]
 
 Returns a I<MIDI::Opus> object containing tracks for each of the voices.
 Will likely need to be saved with the B<write_to_file> method call.
@@ -406,6 +422,12 @@ all the tracks:
 
 L<MIDI::Event> documents most of the values the I<track>
 parameters can take.
+
+=item B<to_string> I<measure-count> [ I<param> ]
+
+Converts the replay logs of the voices (if any) into a custom text
+format. See the B<to_string> method of L<Music::RhythmSet::Voice>
+for details.
 
 =back
 
