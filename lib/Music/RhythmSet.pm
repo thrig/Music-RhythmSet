@@ -110,10 +110,8 @@ sub changes {
         }
         $param{header}->($measure);
         for my $id (0 .. $#curpat) {
-            $param{voice}->(
-                $measure, $id, $curpat[$id], $curpat_str[$id], $changed[$id],
-                $repeat[$id]
-            );
+            $param{voice}->($measure, $id, $curpat[$id], $curpat_str[$id], $changed[$id],
+                $repeat[$id]);
         }
     }
     return $self;
@@ -135,13 +133,14 @@ sub measure {
     for my $v ($self->voices->@*) {
         $v->measure($maxm);
     }
+    return $self;
 }
 
 sub to_ly {
     my ($self, $maxm, %param) = @_;
     croak "need measure count" unless defined $maxm and $maxm >= 1;
     for my $i (0 .. $self->voices->$#*) {
-        for my $p (qw/dur note rest/) {
+        for my $p (qw/dur note rest time/) {
             $param{voice}[$i]{$p} = $param{$p}
               if exists $param{$p} and not exists $param{voice}[$i]{$p};
         }
@@ -166,10 +165,8 @@ sub to_midi {
     return MIDI::Opus->new(
         {   format => $param{format},
             ticks  => $param{ticks},
-            tracks => [
-                map { $_->to_midi($maxm, $param{track}->[ $i++ ]->%*) }
-                  $self->voices->@*
-            ]
+            tracks =>
+              [ map { $_->to_midi($maxm, $param{track}->[ $i++ ]->%*) } $self->voices->@* ]
         }
     );
 }

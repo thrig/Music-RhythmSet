@@ -173,8 +173,10 @@ sub to_ly {
     for my $ref ($replay->@*) {
         my ($bp, $ttl) = $ref->@*;
         $ttl = $maxm if $ttl > $maxm;
-        $ly .= "  % v$id " . join('', $bp->@*) =~
-          tr/10/x./r . ' ' . $ttl . "\n";
+        $ly .= "  % v$id " . join('', $bp->@*) =~ tr/10/x./r . " $ttl\n";
+        if ($param{time}) {
+            $ly .= '  \time ' . $bp->@* . '/' . $param{time} . "\n";
+        }
         my $s = ' ';
         for my $v ($bp->@*) {
             if ($v == NOTE_ON) {
@@ -208,9 +210,8 @@ sub to_midi {
     my $events = $track->events_r;
 
     my $id = $self->id // '';
-    push $events->@*,
-      [ 'track_name', 0, 'voice' . (length $id ? " $id" : '') ];
-    push $events->@*, [ 'set_tempo', 0, $param{tempo} ];
+    push $events->@*, [ 'track_name', 0, 'voice' . (length $id ? " $id" : '') ];
+    push $events->@*, [ 'set_tempo',  0, $param{tempo} ];
     my $delay;
     my $leftover = 0;
 
@@ -230,8 +231,7 @@ sub to_midi {
                     push @midi, [ 'note_off', $delay, $param{chan}, $open, 0 ];
                     $delay = 0;
                 }
-                push @midi,
-                  [ 'note_on', $delay, map { $param{$_} } qw(chan note velo) ];
+                push @midi, [ 'note_on', $delay, map { $param{$_} } qw(chan note velo) ];
                 $delay = $param{dur};
                 $open  = $param{note};
             } else {
@@ -487,10 +487,18 @@ of the current object, for better or worse.
 
 =item B<to_ly> I<count> [ I<param> ]
 
-Returns I<count> measures worth of the replay log formatted for lilypond
-(a text string). Parameters include I<dur> for the note duration (C<16>
-or C<4> or such), the I<note> (C<a>, C<b>, etc), and I<rest> (probably
-should be C<r> or C<s>).
+Returns I<count> measures worth of the replay log formatted for
+lilypond (a text string). Parameters include I<dur> for the note
+duration (C<16> or C<4> or such), the I<note> (C<a>, C<b>, etc), and
+I<rest> (probably should be C<r> or C<s>). I<time> can be specified to
+add C<\time ...> statements to the lilypond output; assuming the
+patterns represent 16th notes
+
+  $voice->to_ly($measures, time => 16);
+
+will for a I<pattern> 12 beats in length prefix those notes with C<\time
+12/16>. This is limited: there is no way to turn C<12/16> into the more
+common C<6/8> or C<3/4> forms.
 
 =item B<to_midi> I<count> [ I<param> ]
 
@@ -518,15 +526,6 @@ B<advance>. In particular the I<measure> number (counting from 0, not 1)
 and the current I<pattern> are set by B<advance>.
 
 =head1 BUGS
-
-B<to_ly> has no support for changing the meter to match the length of
-the I<pattern> should that vary over time. In theory this could be as
-simple as prefixing a C<\time 5/4> (or whatever) time change for
-patterns that work out to five quarter notes (or whatever) before the
-notes for the C<[pattern],ttl> pair in question. In practice there are
-probably grue waiting to mug you around various sharp corners in any
-such implementation, such as when to use C<3/4> versus C<6/8> given
-twelve 16th notes...
 
 <https://github.com/thrig/Music-RhythmSet>
 

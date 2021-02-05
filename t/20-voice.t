@@ -10,7 +10,7 @@
 
 use 5.24.0;
 use Data::Dumper;
-use Test::Most tests => 72;
+use Test::Most tests => 73;
 my $deeply = \&eq_or_diff;
 
 use MIDI;
@@ -123,6 +123,18 @@ MORLOCK
     # never was set in the original object
     my $v3 = $voice->clone;
     is($v3->id, undef);
+
+    # measures with varied beats and thus \time support (such as it is)
+    my $v4 = Music::RhythmSet::Voice->new(
+        replay => [ [ [ 1, 1, 0 ], 1 ], [ [ 1, 0, 1, 0 ], 1 ] ]);
+    is($v4->to_ly(2, dur => 4, time => 4), <<'EOLY');
+  % v xx. 1
+  \time 3/4
+  c4 c4 r4
+  % v x.x. 1
+  \time 4/4
+  c4 r4 c4 r4
+EOLY
 }
 
 # ->advance (and thus the next callback)
