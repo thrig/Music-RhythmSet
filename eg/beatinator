@@ -2,11 +2,15 @@
 #
 # beatinator - generates three voices that vary their rhythmic patterns
 # over time. MIDI output and a text log of the changes are produced
+#
+#   $ perl beatinator foo.midi
+#   ...
+#   $ timidity -A90a --trace-text-meta foo.midi
 
 use 5.24.0;
 use warnings;
 use Music::RhythmSet;
-use Music::RhythmSet::Util qw(beatstring filter_pattern);
+use Music::RhythmSet::Util qw(filter_pattern);
 
 my $filename = shift // die "Usage: $0 midi-file [measure-count]\n";
 my $measures = shift // 64;
@@ -56,7 +60,6 @@ $set->advance($measures);
 # apart (they might instead use the same note and then the MIDI player
 # could make them distinct by changing the instrument, etc)
 $set->to_midi(
-    $measures,
     chan    => 9,                                                   # drum
     sustain => 0,
     track   => [ { note => 60 }, { note => 67 }, { note => 68 } ]
@@ -66,8 +69,6 @@ $set->to_midi(
 # (there are also text_event in the MIDI to help locate the rhythms
 # should this script by accident produce something good)
 $set->changes(
-    divisor => $BPM,
-    max     => $measures,
     header  => sub { say '# measure ' . $_[0] },
     voice   => sub {
         my ($mm, $id, $bp, $bs, $new, $repeat) = @_;

@@ -1,0 +1,54 @@
+#!/usr/bin/env perl
+#
+# texty - imports replay logs from the to_string form and optionally
+# emits the MIDI and change log (if all goes well). the to_string form
+# can also be produced from a MIDI file written by Music::RhythmSet:
+#
+#   $ perl -MMIDI -e 'MIDI::Opus->new({ from_file => "noise.midi" })->dump({dump_tracks=>1})' \
+#   | perl -nle '/^\s+\[\047text_event[^"]+"v(\d+) ([x.]+) (\d+)/a && print join "\t", 0, $1, $2, $3' > x
+#   # (maybe edit "x" here...)
+#   $ perl texty x newnoise.midi
+#
+# which probably should be written up as a "from_midi" method but that's
+# more work and lacks the potential to edit the replay log
+
+use 5.24.0;
+use warnings;
+use Getopt::Long qw(GetOptions);
+use Music::RhythmSet;
+
+GetOptions(
+    'divisor|d=i'  => \my $Flag_Divisor,
+    'no-changes|C' => \my $Flag_Nochanges,
+    'rs|R=s'       => \my $Flag_RS,
+    'sep|s=s'      => \my $Flag_Sep,
+) or exit 1;
+
+my $file = shift // die "Usage: $0 file|- [midi-file]\n";
+my $midi = shift;
+my $fh;
+
+if ($file eq '-') {
+    $fh = \*STDIN;
+} else {
+    open $fh, '<', $file or die "could not open '$file': $!\n";
+}
+
+my $set = Music::RhythmSet->new->from_string(
+    do { local $/; readline $fh },
+    defined $Flag_RS  ? (rs  => $Flag_RS)  : (),
+    defined $Flag_Sep ? (sep => $Flag_Sep) : (),
+);
+
+$set->to_midi->write_to_file($midi) if defined $midi;
+
+exit if $Flag_Nochanges;
+
+$set->changes(
+    $Flag_Divisor ? (divisor => $Flag_Divisor) : (),
+    header => sub { say '# measure ' . $_[0] },
+    voice  => sub {
+        my ($mm, $id, $bpat, $bstr, $new, $repeat) = @_;
+        say join "\t", $id, $bstr, ($new ? 'n' : '') . ($repeat ? 'r' : '');
+    }
+);

@@ -15,7 +15,7 @@ use constant { NOTE_ON => 1, NOTE_OFF => 0 };
 
 use parent qw(Exporter);
 our @EXPORT_OK =
-  qw(beatstring compare_onsets duration filter_pattern flatten ocvec onset_count rand_onsets score_fourfour score_stddev write_midi);
+  qw(beatstring compare_onsets duration filter_pattern flatten ocvec onset_count rand_onsets score_fourfour score_stddev upsize write_midi);
 
 sub beatstring {
     my ($bpat) = @_;
@@ -26,8 +26,10 @@ sub beatstring {
 
 sub compare_onsets {
     my ($first, $second) = @_;
+
     my $same   = 0;
     my $onsets = 0;
+
     for my $i (0 .. $first->$#*) {
         if ($first->[$i] == NOTE_ON) {
             $onsets++;
@@ -35,6 +37,7 @@ sub compare_onsets {
         }
     }
     croak "no onsets?! [@$first] [@$second]" unless $onsets;
+
     return $same / $onsets;
 }
 
@@ -42,20 +45,25 @@ sub duration {
     my ($replay) = @_;
     croak "no replay log"
       unless defined $replay and ref $replay eq 'ARRAY';
+
     my $measures = 0;
     my $beats    = 0;
+
     for my $ref ($replay->@*) {
         $measures += $ref->[1];
         $beats    += $ref->[0]->@* * $ref->[1];
     }
+
     return $measures, $beats;
 }
 
 sub filter_pattern {
     my ($onsets, $total, $trials, $fudge, $nozero) = @_;
+
     $fudge //= 0.0039;
     my $best = ~0;
     my $bpat;
+
     for (1 .. $trials) {
         my $new   = &rand_onsets;
         my $score = score_stddev($new) + score_fourfour($new) * $fudge;
@@ -65,6 +73,7 @@ sub filter_pattern {
             $bpat = $new;
         }
     }
+
     return $bpat;
 }
 
@@ -80,12 +89,15 @@ sub ocvec {
     my ($bpat) = @_;
     croak "no pattern set"
       unless defined $bpat and ref $bpat eq 'ARRAY';
+
     my @set;
     my $i = 0;
+
     for my $x ($bpat->@*) {
         push @set, $i if $x == NOTE_ON;
         $i++;
     }
+
     return \@set;
 }
 
@@ -93,16 +105,20 @@ sub onset_count {
     my ($bpat) = @_;
     croak "no pattern set"
       unless defined $bpat and ref $bpat eq 'ARRAY';
+
     my $onsets = 0;
+
     for my $x ($bpat->@*) {
         $onsets++ if $x == NOTE_ON;
     }
+
     return $onsets;
 }
 
 sub rand_onsets {
     my ($onsets, $total) = @_;
     croak "onsets must be < total" if $onsets >= $total;
+
     my @pattern;
     while ($total) {
         if (rand() < $onsets / $total) {
@@ -113,36 +129,41 @@ sub rand_onsets {
         }
         $total--;
     }
+
     return \@pattern;
 }
 
 sub score_fourfour {
-    my $beats       = shift;
+    my ($bpat) = @_;
+
     my @beatquality = map { 256 - $_ } qw(
       256 0 16 4
       64 0 32 8
       128 0 16 4
       64 0 32 8
     );
-    my $score = 0;
     my $i     = 0;
+    my $score = 0;
 
-    for my $x ($beats->@*) {
+    for my $x ($bpat->@*) {
         $score += $beatquality[$i] if $x == NOTE_ON;
         $i++;
     }
+
     return $score;
 }
 
 sub score_stddev {
-    my $beats = shift;
-    my $len   = $beats->@*;
+    my ($bpat) = @_;
+
     my @deltas;
-    for my $i (0 .. $beats->$#*) {
-        if ($beats->[$i] == NOTE_ON) {
+    my $len = $bpat->@*;
+
+    for my $i (0 .. $bpat->$#*) {
+        if ($bpat->[$i] == NOTE_ON) {
             my $j = $i + 1;
             while (1) {
-                if ($beats->[ $j % $len ] == NOTE_ON) {
+                if ($bpat->[ $j % $len ] == NOTE_ON) {
                     my $d = $j - $i;
                     push @deltas, $d;
                     last;
@@ -151,21 +172,41 @@ sub score_stddev {
             }
         }
     }
-    croak "no onsets?! [@$beats]" unless @deltas;
+    croak "no onsets?! [@$bpat]" unless @deltas;
+
     return stddevp(@deltas);
+}
+
+sub upsize {
+    my ($bpat, $newlen) = @_;
+    croak "no pattern set"
+      unless defined $bpat and ref $bpat eq 'ARRAY' and $bpat->@*;
+    my $len = $bpat->@*;
+    croak "new length must be greater than pattern length" if $newlen <= $len;
+    my $mul = int($newlen / $len);
+    my @pat = (NOTE_OFF) x $newlen;
+    for my $i (0 .. $bpat->$#*) {
+        if ($bpat->[$i] == NOTE_ON) {
+            $pat[ $i * $mul ] = NOTE_ON;
+        }
+    }
+    return \@pat;
 }
 
 sub write_midi {
     my ($file, $track, %param) = @_;
+
     $param{format} //= 1;
     $param{ticks}  //= 96;
+
     MIDI::Opus->new(
         {   format => $param{format},
             ticks  => $param{ticks},
             tracks => ref $track eq 'ARRAY' ? $track : [$track]
         }
     )->write_to_file($file);
-    return;
+
+    return;    # copy "write_to_file" interface
 }
 
 1;
@@ -177,14 +218,14 @@ Music::RhythmSet::Util - pattern generation and classification functions
 
 =head1 DESCRIPTION
 
-Various functions related to the generation and comparison of patterns
-of beats, and so forth. A I<pattern> of beats is assumed to be an array
-reference of zeros and ones, e.g. for 4/4 time in 16th notes
+Various functions related to the generation and classification of
+patterns of beats, and so forth. A I<pattern> of beats is assumed to be
+an array reference of zeros and ones, e.g. for 4/4 time in 16th notes
 
   [ 1,0,0,0, 1,0,0,0, 1,0,0,0, 1,0,0,0 ]
 
-Nothing is exported by default; functions will need to be used fully
-qualified or be imported by listing them on the C<use> line.
+Nothing is exported by default; the functions must be used fully
+qualified or by importing them on the C<use> line.
 
 =head1 FUNCTIONS
 
@@ -252,7 +293,7 @@ Assumes the pattern is 16 beats in length.
 =item B<score_stddev> I<pattern>
 
 Standard deviation of the distances to the following onset; lower scores
-indicate higher regularity (non-clumping) of the onsets. But you
+indicate higher regularity (non-clumping) of the onsets. However, you
 probably want a rhythm somewhere between the zero score
 
   [ 1,0,0,0, 1,0,0,0, 1,0,0,0, 1,0,0,0 ]
@@ -264,14 +305,31 @@ and
 (or the various rotations of the above) as the first is probably too
 regular and the second probably too irregular.
 
-This method should work on patterns of any length (CPU and memory
-permitting).
+This method should work on patterns of any length (CPU and memory and
+user patience permitting).
+
+=item B<upsize> I<pattern> I<new-length>
+
+Increases the size of the pattern to I<new-length> which ideally should
+be a positive integer multiple of the current I<pattern> length,
+possibly the "least common multiple" with some other pattern length:
+
+  $ perl -MMath::BigInt -E 'say Math::BigInt->new(8)->blcm(6,7)'
+  168
+
+At some point it may be more useful to convert the onsets into "close
+enough" slots of at most 32 or 64 beats depending on the resolution
+desired, or to simply use measures of different lengths. I have not
+experimented with measures of different lengths over multiple voices so
+do not know what the problems will be.
+
+Returns a new pattern.
 
 =item B<write_midi> I<filename> I<track> [ I<params> ]
 
 A small wrapper around L<MIDI::Opus> that writes a MIDI track (or
-tracks) to a file. The optional I<params> may include I<format>
-(probably should be C<1>) and I<ticks> (consult the MIDI specification).
+tracks) to a file. The optional I<params> may include I<format> and
+I<ticks> (see the MIDI specification).
 
 =back
 

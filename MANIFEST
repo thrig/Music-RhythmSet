@@ -5,6 +5,7 @@ META.json
 META.yml
 README
 eg/beatinator
+eg/texty
 eg/variance
 lib/Music/RhythmSet.pm
 lib/Music/RhythmSet/Util.pm

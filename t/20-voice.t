@@ -5,12 +5,14 @@
 #
 #   AUTHOR_TEST_JMATES_MIDI=timidity prove t/20-voice.t
 #
-# the MIDI files can be inspected with `midiutil dump ...` (from my
-# scripts repository) which is a thin wrapper around MIDI::Opus ->dump
+# the MIDI files can also be inspected with
+#
+#   perl -MMIDI -e 'MIDI::Opus->new({from_file=>"..."})->dump({dump_tracks=>1})'
 
 use 5.24.0;
 use Data::Dumper;
-use Test::Most tests => 65;
+use Test::Most tests => 69;
+
 my $deeply = \&eq_or_diff;
 
 use Music::RhythmSet::Util qw(write_midi);
@@ -38,13 +40,15 @@ $voice->stash(42);
 is($voice->stash, 42);
 
 # lilypond
-is($voice->to_ly(4), <<'EOLY');
+is($voice->to_ly, <<'EOLY');
   % v xx. 2
   c16 c16 r16
   c16 c16 r16
   % v xxx 1
   c16 c16 c16
-  % v .x 1
+  % v .x 3
+  r16 c16
+  r16 c16
   r16 c16
 EOLY
 
@@ -53,11 +57,11 @@ EOLY
     lives_ok {
         my $x = Music::RhythmSet::Voice->new;
         $x->replay(undef);
-        $x->clone(undef);
+        $x->clone;
     };
 
-    my $v2 = $voice->clone(42);
-    is($v2->to_ly(1, dur => 8, note => 'bes', rest => 's'), <<'MORLOCK');
+    my $v2 = $voice->clone(newid => 42);
+    is($v2->to_ly(maxm => 1, dur => 8, note => 'bes', rest => 's'), <<'MORLOCK');
   % v42 xx. 1
   bes8 bes8 s8
 MORLOCK
@@ -73,7 +77,7 @@ MORLOCK
     # measures with varied beats and thus \time support (such as it is)
     my $v4 = Music::RhythmSet::Voice->new(
         replay => [ [ [ 1, 1, 0 ], 1 ], [ [ 1, 0, 1, 0 ], 1 ] ]);
-    is($v4->to_ly(2, dur => 4, time => 4), <<'EOLY');
+    is($v4->to_ly(maxm => 2, dur => 4, time => 4), <<'EOLY');
   % v xx. 1
   \time 3/4
   c4 c4 r4
@@ -83,14 +87,32 @@ MORLOCK
 EOLY
 }
 
-# ->to_string
+# ->to_string, ->from_string
 {
-    is($voice->to_string(6), "0\t\txx.\t2\n6\t\txxx\t1\n9\t\t.x\t3\n");
+    my $str = $voice->to_string;
+    is($str, "0\t\txx.\t2\n6\t\txxx\t1\n9\t\t.x\t3\n");
 
-    my $v2 = $voice->clone(7);
-    is( $v2->to_string(4, rs => "\r", sep => ' '),
-        "0 7 xx. 2\r6 7 xxx 1\r9 7 .x 1\r"
+    my $v2 = Music::RhythmSet::Voice->new->from_string($str);
+    # from_string only populates the replay log
+    $deeply->(
+        $v2->replay, [ [ [ 1, 1, 0 ], 2 ], [ [ 1, 1, 1 ], 1 ], [ [ 0, 1 ], 3 ] ]
     );
+
+    my $v3 = $voice->clone(newid => 7);
+    $str = $v3->to_string(maxm => 4, rs => "\r", sep => ' ');
+    is($str, "0 7 xx. 2\r6 7 xxx 1\r9 7 .x 1\r");
+
+    $v2 = Music::RhythmSet::Voice->new->from_string($str, rs => "\r", sep => ' ');
+    $deeply->(
+        $v2->replay, [ [ [ 1, 1, 0 ], 2 ], [ [ 1, 1, 1 ], 1 ], [ [ 0, 1 ], 1 ] ]
+    );
+
+    dies_ok { $v2->from_string } qr/need a string/;
+    dies_ok { $v2->from_string('') } qr/need a string/;
+    dies_ok { $v2->from_string('x') } qr/invalid record/;
+    dies_ok { $v2->from_string("0\t0\t\t42") } qr/invalid record/;
+    dies_ok { $v2->from_string("0\t0\tinvalid\t42") } qr/invalid record/;
+    dies_ok { $v2->from_string("0\t0\tx..\tbadttl") } qr/invalid record/;
 }
 
 # ->advance (and thus the next callback)
@@ -169,7 +191,7 @@ sub audit_track {
 # one measure with two notes at the default duration (20) -- 1 1 0
 # (a trailing text_event pads out the duration of the rest)
 audit_track(
-    sub { $voice->to_midi(1) },
+    sub { $voice->to_midi(maxm => 1) },
     {   '_dur'           => 60,
         '_events'        => 8,
         'note_off'       => 2,
@@ -189,7 +211,7 @@ audit_track(
 my $track = audit_track(
     sub {
         $voice->to_midi(
-            1,
+            maxm   => 1,
             chan   => 7,
             dur    => 21,
             note   => 67,
@@ -226,7 +248,7 @@ if (defined $ENV{AUTHOR_TEST_JMATES_MIDI}) {
 
 # more MIDI - 1 1 0  1 1 0   1 1 1   0 1  0 1  0 1
 $track = audit_track(
-    sub { $voice->to_midi(6, dur => 96, sustain => 1) },
+    sub { $voice->to_midi(dur => 96, sustain => 1) },
     {   '_dur'           => 1440,           # (3*2 + 3 + 2*3) * 96
         '_events'        => 26,
         'note_off'       => 10,
@@ -241,7 +263,7 @@ $track = audit_track(
 );
 
 write_midi('t/sustains.midi', $track);
-write_midi('t/staccato.midi', $voice->to_midi(6, dur => 96));
+write_midi('t/staccato.midi', $voice->to_midi(dur => 96));
 
 push @playback, 't/sustains.midi', 't/staccato.midi';
 
@@ -252,7 +274,7 @@ $track = audit_track(
             id      => 42,
             pattern => [0],
             ttl     => 1
-        )->to_midi(1);
+        )->to_midi(maxm => 1);
     },
     {   '_dur'       => 20,
         '_events'    => 4,
@@ -266,7 +288,8 @@ write_midi('t/silence-pa.midi', $track);
 # less nothing
 $track = audit_track(
     sub {
-        Music::RhythmSet::Voice->new(pattern => [0], ttl => 1)->to_midi(1, notext => 1);
+        Music::RhythmSet::Voice->new(pattern => [0], ttl => 1)
+          ->to_midi(maxm => 1, notext => 1);
     },
     {   '_dur'       => 0,
         '_events'    => 2,
@@ -280,7 +303,7 @@ write_midi('t/silence-re.midi', $track);
 $track = audit_track(
     sub {
         Music::RhythmSet::Voice->new(next => sub { [qw/0 0 0/], 2 })->advance(4)
-          ->to_midi(3);
+          ->to_midi(maxm => 3);
     },
     {   '_dur'       => 180,
         '_events'    => 5,
@@ -298,66 +321,68 @@ lives_ok { Music::RhythmSet::Voice->new(ttl     => 0) };
 lives_ok { Music::RhythmSet::Voice->new(pattern => [1]) };
 dies_ok {
     Music::RhythmSet::Voice->new(pattern => undef, ttl => 0)
-};
+}
+qr/invalid ttl/;
 dies_ok {
     Music::RhythmSet::Voice->new(pattern => undef, ttl => 42)
-};
+}
+qr/invalid pattern/;
+dies_ok {
+    Music::RhythmSet::Voice->new(pattern => [], ttl => 42)
+}
+qr/invalid pattern/;
 dies_ok {
     Music::RhythmSet::Voice->new(pattern => [1], ttl => 0)
-};
+}
+qr/invalid ttl/;
 dies_ok {
     Music::RhythmSet::Voice->new(pattern => {}, ttl => 42)
-};
+}
+qr/invalid pattern/;
 
 # no or an invalid 'next' callback
 $voice = Music::RhythmSet::Voice->new;
-dies_ok { $voice->advance };
+dies_ok { $voice->advance } qr/no next callback/;
 $voice->next({});
-dies_ok { $voice->advance };
+dies_ok { $voice->advance } qr/no next callback/;
 
 # invalid return values from a 'next' callback
 $voice->next(sub { [1], -5000 });
-dies_ok { $voice->advance };
+dies_ok { $voice->advance } qr/invalid ttl/;
 $voice->next(sub { undef, 42 });
-dies_ok { $voice->advance };
+dies_ok { $voice->advance } qr/invalid pattern/;
 $voice->next(sub { {}, 42 });
-dies_ok { $voice->advance };
+dies_ok { $voice->advance } qr/invalid pattern/;
 $voice->next(sub { [], 42 });
-dies_ok { $voice->advance };
+dies_ok { $voice->advance } qr/invalid pattern/;
 
-# -> clone does some error checking
+# ->clone does some error checking
 $voice = Music::RhythmSet::Voice->new(ttl => 42);
 $voice->pattern({});
-dies_ok { $voice->clone };
+dies_ok { $voice->clone } qr/invalid pattern/;
+$voice->pattern([]);
+dies_ok { $voice->clone } qr/invalid pattern/;
 $voice->pattern([1]);
 $voice->replay({});
-dies_ok { $voice->clone };
+dies_ok { $voice->clone } qr/replay must be/;
 $voice->replay([ {}, {} ]);
-dies_ok { $voice->clone(99) };
-
-# need a measure count
-dies_ok { $voice->to_ly };
-dies_ok { $voice->to_ly(-1) };
-dies_ok { $voice->to_midi };
-dies_ok { $voice->to_midi(-1) };
-dies_ok { $voice->to_string };
-dies_ok { $voice->to_string(-1) };
+dies_ok { $voice->clone(newid => 99) } qr/replay array must contain/;
 
 # replay log is no bueno, or empty (did you forget to call ->advance to
 # populate it? asking for a friend)
 $voice = Music::RhythmSet::Voice->new;
 $voice->replay(undef);
-dies_ok { $voice->to_ly(1) };
-dies_ok { $voice->to_midi(1) };
-dies_ok { $voice->to_string(1) };
+dies_ok { $voice->to_ly } qr/empty replay log/;
+dies_ok { $voice->to_midi } qr/empty replay log/;
+dies_ok { $voice->to_string } qr/empty replay log/;
 $voice->replay({});
-dies_ok { $voice->to_ly(1) };
-dies_ok { $voice->to_midi(1) };
-dies_ok { $voice->to_string(1) };
+dies_ok { $voice->to_ly } qr/empty replay log/;
+dies_ok { $voice->to_midi } qr/empty replay log/;
+dies_ok { $voice->to_string } qr/empty replay log/;
 $voice->replay([]);
-dies_ok { $voice->to_ly(1) };
-dies_ok { $voice->to_midi(1) };
-dies_ok { $voice->to_string(1) };
+dies_ok { $voice->to_ly } qr/empty replay log/;
+dies_ok { $voice->to_midi } qr/empty replay log/;
+dies_ok { $voice->to_string } qr/empty replay log/;
 
 if (defined $ENV{AUTHOR_TEST_JMATES_MIDI}) {
     diag "playback ...";

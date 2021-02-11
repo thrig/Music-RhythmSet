@@ -1,14 +1,14 @@
 #!perl
 #
-# these utility routines are pretty light on error checking
+# NOTE some of the utility routines do not do much error checking
 
 use 5.24.0;
-use Test::Most tests => 43;
+use Test::Most tests => 50;
 my $deeply = \&eq_or_diff;
 
 use MIDI;
 use Music::RhythmSet::Util
-  qw(beatstring compare_onsets duration filter_pattern flatten ocvec onset_count rand_onsets score_fourfour score_stddev write_midi);
+  qw(beatstring compare_onsets duration filter_pattern flatten ocvec onset_count rand_onsets score_fourfour score_stddev upsize write_midi);
 
 my @playback;
 
@@ -72,9 +72,18 @@ is(score_fourfour([qw/1 0 0 0 1 0 0 0 1 0 0 0 1 0 0 0/]), 512);
 is(score_stddev([qw/1 0 0 0 1 0 0 0 1 0 0 0 1 0 0 0/]), 0);
 is(score_stddev([qw/0 1 0 0 0 1 0 0 0 1 0 0 0 1 0 0/]), 0);
 # TODO actually check the math on this one but that would probably be
-# testing whatever Statistics::Lite is doing
+# testing whatever Statistics::Lite is doing and the results seem good
+# enough for music (noise) production
 is(sprintf("%.1f", score_stddev([qw/1 1 1 1 0 0 0 0 0 0 0 0 0 0 0 0/])), 5.2);
 dies_ok { score_stddev([]) };
+
+$deeply->(upsize([ 1, 0, 1, 1 ], 8), [ 1, 0, 0, 0, 1, 0, 1, 0 ]);
+dies_ok { upsize() } qr/no pattern set/;
+dies_ok { upsize(undef,          99) } qr/no pattern set/;
+dies_ok { upsize([],             99) } qr/no pattern set/;
+dies_ok { upsize({},             99) } qr/no pattern set/;
+dies_ok { upsize([ 1, 1, 1, 1 ], 3) } qr/new length/;
+dies_ok { upsize([ 1, 1, 1, 1 ], 4) } qr/new length/;
 
 dies_ok { duration() };
 dies_ok { duration({}) };

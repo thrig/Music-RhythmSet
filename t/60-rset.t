@@ -1,7 +1,7 @@
 #!perl
 
 use 5.24.0;
-use Test::Most tests => 57;
+use Test::Most tests => 60;
 my $deeply = \&eq_or_diff;
 
 use Music::RhythmSet;
@@ -9,7 +9,6 @@ use Scalar::Util qw(refaddr);
 
 my $set = Music::RhythmSet->new;
 
-is($set->curid, 0);
 $deeply->($set->voices, []);
 
 $set->stash("foo");
@@ -36,7 +35,6 @@ $set->add(
     }
 );
 
-is($set->curid, 2);
 ok($set->voices->@* == 2);
 
 my $id = 0;
@@ -64,11 +62,12 @@ for my $v ($set->voices->@*) {
 }
 
 $deeply->(
-    $set->to_ly(1), [ "  % v0 .x 1\n  r16 c16\n", "  % v1 x. 1\n  c16 r16\n" ],
+    $set->to_ly(maxm => 1),
+    [ "  % v0 .x 1\n  r16 c16\n", "  % v1 x. 1\n  c16 r16\n" ],
 );
 $deeply->(
     $set->to_ly(
-        1,
+        maxm  => 1,
         note  => 'd',
         rest  => 's',
         voice => [ {}, { note => 'b' } ]
@@ -77,12 +76,12 @@ $deeply->(
 );
 
 my $opus;
-lives_ok { $opus = $set->to_midi(1) };
+lives_ok { $opus = $set->to_midi(maxm => 1) };
 ok(defined $opus and $opus->tracks == 2);
 
 lives_ok {
     $opus = $set->to_midi(
-        1,
+        maxm   => 1,
         format => 0,
         ticks  => 89,
         chan   => 3,
@@ -107,31 +106,44 @@ for my $t (0 .. 1) {
 is($chan[0], 3);
 is($chan[1], 4);
 
-is($set->to_string(1), "0\t0\t.x\t1\n0\t1\tx.\t1\n");
+# ->to_string, ->from_string
+{
+    my $str = $set->to_string(maxm => 1);
+    is($str, "0\t0\t.x\t1\n0\t1\tx.\t1\n");
 
-is($set->to_string(1, sep => ' ', rs => "\r"), "0 0 .x 1\r0 1 x. 1\r");
+    my $ns = Music::RhythmSet->new->from_string($str);
+    is(scalar $ns->voices->@*, 2);
+    # from_string only populates the replay log
+    $deeply->($ns->voices->[0]->replay, [[[0,1],1]]);
+    $deeply->($ns->voices->[1]->replay, [[[1,0],1]]);
+
+    $str = $set->to_string(maxm => 1, sep => ' ', rs => "\r");
+    is($str, "0 0 .x 1\r0 1 x. 1\r");
+    $ns = Music::RhythmSet->new->from_string($str, sep => ' ', rs => "\r");
+    is(scalar $ns->voices->@*, 2);
+
+    dies_ok { $ns->from_string } qr/need a string/;
+    dies_ok { $ns->from_string('') } qr/need a string/;
+    dies_ok { $ns->from_string('x') } qr/invalid record/;
+    dies_ok { $ns->from_string("0\t\tx..\t42") } qr/invalid record/;
+    dies_ok { $ns->from_string("0\tbadid\tx..\t42") } qr/invalid record/;
+    dies_ok { $ns->from_string("0\t99\tx..\t42") } qr/ID out of range/;
+    dies_ok { $ns->from_string("0\t0\t\t42") } qr/invalid record/;
+    dies_ok { $ns->from_string("0\t0\tinvalid\t42") } qr/invalid record/;
+    dies_ok { $ns->from_string("0\t0\tx..\tbadttl") } qr/invalid record/;
+}
 
 # ->clone
 my $newset;
 lives_ok { $newset = $set->clone };
-is($newset->curid, 2);
 ok($newset->voices->@* == 2);
 ok(refaddr($set->voices->[$_]) ne refaddr($newset->voices->[$_])) for 0 .. 1;
 $deeply->($newset->voices->[0]->pattern, [qw/0 1/]);
 $deeply->($newset->voices->[1]->pattern, [qw/1 0/]);
 
-dies_ok { $set->add };
-dies_ok { $set->add(undef) };
-dies_ok { $set->add([]) };
-
-is($set->curid, 2);
-
-dies_ok { $set->to_ly };
-dies_ok { $set->to_ly(0) };
-dies_ok { $set->to_midi };
-dies_ok { $set->to_midi(0) };
-dies_ok { $set->to_string };
-dies_ok { $set->to_string(0) };
+dies_ok { $set->add } qr/nothing to add/;
+dies_ok { $set->add(undef) } qr/nothing to add/;
+dies_ok { $set->add([]) } qr/invalid voice parameters/;
 
 # ->changes, two-beat measures in two voices
 my @measures;
@@ -196,6 +208,7 @@ $deeply->(
     ]
 );
 
+# need the two mandatory callbacks
 dies_ok { $set->changes };
 dies_ok {
     $set->changes(header => sub { "foo" })
