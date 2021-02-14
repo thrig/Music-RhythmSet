@@ -93,7 +93,7 @@ sub changes {
         for my $ref ($voice->replay->@*) {
             my ($bpat, $ttl) = $ref->@*;
             # build a priority queue of when voices change their pattern
-            grpriq_add($queue, [ $voice->id, $bpat ], $beat);
+            grpriq_add($queue, $beat, [ $voice->id, $bpat ]);
             $beat += $ttl * $bpat->@*;
         }
     }
