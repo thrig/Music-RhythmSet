@@ -5,15 +5,27 @@
 #
 #   $ perl beatinator foo.midi
 #   ...
-#   $ timidity -A90a --trace-text-meta foo.midi
+#   $ timidity foo.midi
+#
+# there may be things to TWEAK in this code
 
 use 5.24.0;
 use warnings;
+use Getopt::Long qw(GetOptions);
 use Music::RhythmSet;
 use Music::RhythmSet::Util qw(filter_pattern);
 
+Getopt::Long::Configure('bundling');
+GetOptions(
+    'divisor|d=i'  => \my $Flag_Divisor,
+    'no-changes|C' => \my $Flag_Nochanges,
+    'rs|R=s'       => \my $Flag_RS,
+    'sep|S=s'      => \my $Flag_Sep,
+    'string|s'     => \my $Flag_Tostring,
+) or exit 1;
+
 my $filename = shift // die "Usage: $0 midi-file [measure-count]\n";
-my $measures = shift // 64;
+my $measures = shift // 128;
 # all voices use the same number of beats per measure (this need not be
 # true but would make the "measures" harder to line up between voices)
 my $BPM  = 16;
@@ -22,7 +34,7 @@ my $rest = [ (0) x $BPM ];
 # each voice has a consistent (but different) number of onsets per
 # measure. those with more onsets are given more trials to lower
 # the rhythmic variance (see eg/variance)
-my @onsets = ( [ 3, 100 ], [ 7, 600 ] );
+my @onsets = ( [ 3, 250 ], [ 7, 500 ] );
 
 sub voice0 {
     state $i = 0;
@@ -32,7 +44,7 @@ sub voice0 {
     # put them into a structure and use that somehow. filter_pattern
     # finds patterns that best fit a ranking system; this may not result
     # in usable rhythms
-    filter_pattern( 5, $BPM, 400 ), 16;
+    filter_pattern( 5, $BPM, 250 ), 16;
 }
 
 sub voice1 {
@@ -58,23 +70,29 @@ $set->advance($measures);
 
 # different notes for the different voices so they are easier to tell
 # apart (they might instead use the same note and then the MIDI player
-# could make them distinct by changing the instrument, etc)
+# could make them distinct by changing the instrument, etc) TWEAK
 $set->to_midi(
     chan    => 9,                                                   # drum
     sustain => 0,
     track   => [ { note => 60 }, { note => 67 }, { note => 68 } ]
 )->write_to_file($filename);
 
+print $set->to_string if $Flag_Tostring;
+
+exit if $Flag_Nochanges;
+
 # show what the patterns are in each measure where a pattern changes
 # (there are also text_event in the MIDI to help locate the rhythms
 # should this script by accident produce something good)
 $set->changes(
-    header => sub { say '# measure ' . $_[0] },
+    $Flag_Divisor ? ( divisor => $Flag_Divisor ) : (),
+    header => sub { warn '# measure ' . $_[0] . "\n" },
     voice  => sub {
         my ( $mm, $id, $bp, $bs, $new, $repeat ) = @_;
         # 'n' if there was a pattern change event for this voice, 'r' if
         # that change event did not actually change the pattern
         # (uncommon in this script)
-        say join "\t", $id, $bs, ( $new ? 'n' : '' ) . ( $repeat ? 'r' : '' );
+        warn join( "\t", $id, $bs, ( $new ? 'n' : '' ) . ( $repeat ? 'r' : '' ) )
+          . "\n";
     }
 );

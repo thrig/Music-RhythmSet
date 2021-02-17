@@ -1,37 +1,48 @@
 #!/usr/bin/env perl
 #
 # texty - imports replay logs from the to_string form and optionally
-# emits the MIDI and change log (if all goes well). the to_string form
-# can also be produced from a MIDI file written by Music::RhythmSet:
+# emits that data in various forms (if all goes well). the to_string
+# form can also be read from a MIDI file written by Music::RhythmSet:
 #
 #   $ perl -MMIDI -e 'MIDI::Opus->new({ from_file => "noise.midi" })->dump({dump_tracks=>1})' \
 #   | perl -nle '/^\s+\[\047text_event[^"]+"v(\d+) ([x.]+) (\d+)/a && print join "\t", 0, $1, $2, $3' > x
-#   # (maybe edit "x" here...)
+#   # ... perhaps edit "x" here...
 #   $ perl texty x newnoise.midi
+#   $ perl texty -L noise.X.ly -CU < x > y
+#   $ sort -n y
+#   ...
+#   $ cat noise.*.ly
 #
 # which probably should be written up as a "from_midi" method but that's
-# more work and lacks the potential to edit the replay log
+# more work (and testing...) and lacks the potential to edit the string
+# form of the replay log
+#
+# there may be things to TWEAK in this code
 
 use 5.24.0;
 use warnings;
 use Getopt::Long qw(GetOptions);
 use Music::RhythmSet;
 
+Getopt::Long::Configure('bundling');
 GetOptions(
     'divisor|d=i'  => \my $Flag_Divisor,
+    'help|h|?'     => \&emit_help,
+    'lilypond|L=s' => \my $Flag_Lilypond,
     'no-changes|C' => \my $Flag_Nochanges,
     'rs|R=s'       => \my $Flag_RS,
-    'sep|s=s'      => \my $Flag_Sep,
+    'sep|S=s'      => \my $Flag_Sep,
+    'update|U'     => \my $Flag_Update,
 ) or exit 1;
 
-my $file = shift // die "Usage: $0 file|- [midi-file]\n";
-my $midi = shift;
+my ( $file, $midi ) = @ARGV;
+$file //= '-';
 my $fh;
 
 if ( $file eq '-' ) {
     $fh = \*STDIN;
 } else {
-    open $fh, '<', $file or die "could not open '$file': $!\n";
+    open $fh, '+<', $file or die "could not open '$file': $!\n";
 }
 
 my $set = Music::RhythmSet->new->from_string(
@@ -40,15 +51,66 @@ my $set = Music::RhythmSet->new->from_string(
     defined $Flag_Sep ? ( sep => $Flag_Sep ) : (),
 );
 
-$set->to_midi->write_to_file($midi) if defined $midi;
+if ( defined $midi ) {
+    # TODO CLI flags for these. in the meantime TWEAK them as need be
+    $set->to_midi(
+        chan  => 9,
+        track => [ { note => 60 }, { note => 67 }, { note => 68 } ]
+    )->write_to_file($midi);
+}
+
+if ($Flag_Lilypond) {
+    if ( $Flag_Lilypond !~ m/X/ and $set->voices->@* > 1 ) {
+        warn "no X in lilypond filename...\n";
+        sleep 3;
+    }
+    my $x = 0;
+    for my $str ( $set->to_ly->@* ) {
+        my $lyfile = $Flag_Lilypond =~ s/(X+)/sprintf "%.*d", length $1, $x/er;
+        open my $lfh, '>', $lyfile or die "could not write '$lyfile': $!\n";
+        print $lfh $str;
+        $x++;
+    }
+}
+
+if ($Flag_Update) {
+    if ( $file eq '-' ) {
+        $fh = \*STDOUT;
+    } else {
+        # NOTE is not atomic, risk of data loss if something goes awry,
+        # etc. you have backups, right?
+        seek $fh, 0, 0;
+    }
+    say $fh $set->to_string(
+        defined $Flag_RS  ? ( rs  => $Flag_RS )  : (),
+        defined $Flag_Sep ? ( sep => $Flag_Sep ) : (),
+    );
+}
 
 exit if $Flag_Nochanges;
 
 $set->changes(
     $Flag_Divisor ? ( divisor => $Flag_Divisor ) : (),
-    header => sub { say '# measure ' . $_[0] },
+    header => sub { warn '# measure ' . $_[0] . "\n" },
     voice  => sub {
         my ( $mm, $id, $bpat, $bstr, $new, $repeat ) = @_;
-        say join "\t", $id, $bstr, ( $new ? 'n' : '' ) . ( $repeat ? 'r' : '' );
+        warn join( "\t", $id, $bstr, ( $new ? 'n' : '' ) . ( $repeat ? 'r' : '' ) )
+          . "\n";
     }
 );
+
+sub emit_help {
+    warn <<'END_USAGE';
+Usage: texty [options] file|- [midi-file]
+
+Options:
+  -d [divisor]  Divide beat count by this many beats per measure
+  -C            Do not emit changes to stderr
+  -L lyfile     Lilypond file; first X in filename gets counter var
+  -R recsep     Record sep for string import and export
+  -s fieldsep   Field sep for string import and export
+  -U            Update file in place (or emit to stdout if no file)
+
+END_USAGE
+    exit 64;
+}
