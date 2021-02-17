@@ -24,11 +24,11 @@ use warnings;
 use Music::RhythmSet::Util qw(filter_pattern);
 
 die "Usage: $0 onsets beats trials repeat-count\n" unless @ARGV == 4;
-my ($onsets, $beats, $trials, $times) = @ARGV;
+my ( $onsets, $beats, $trials, $times ) = @ARGV;
 
 my %tally;
 
-$tally{ join '', filter_pattern($onsets, $beats, $trials)->@* }++
+$tally{ join '', filter_pattern( $onsets, $beats, $trials )->@* }++
   for 1 .. $times;
 
 my $total = 0;
@@ -36,6 +36,6 @@ $total += $_ for values %tally;
 my $unique = keys %tally;
 
 warn "unique $unique\n";
-for my $k (sort { $tally{$b} <=> $tally{$a} } keys %tally) {
+for my $k ( sort { $tally{$b} <=> $tally{$a} } keys %tally ) {
     say join "\t", $tally{$k}, $k, sprintf "%.1f%%", $tally{$k} / $total * 100;
 }

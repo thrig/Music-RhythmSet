@@ -15,18 +15,18 @@ use namespace::clean;
 
 use constant { NOTE_ON => 1, NOTE_OFF => 0, EVENT => 0, DTIME => 1 };
 
-has id      => (is => 'rw');
-has next    => (is => 'rw');
-has measure => (is => 'rw', default => sub { 0 });
-has pattern => (is => 'rw');
-has replay  => (is => 'rw', default => sub { [] });
-has stash   => (is => 'rw');
-has ttl     => (is => 'rw', default => sub { 0 });
+has id      => ( is => 'rw' );
+has next    => ( is => 'rw' );
+has measure => ( is => 'rw', default => sub { 0 } );
+has pattern => ( is => 'rw' );
+has replay  => ( is => 'rw', default => sub { [] } );
+has stash   => ( is => 'rw' );
+has ttl     => ( is => 'rw', default => sub { 0 } );
 
 # perldoc Moo
 sub BUILD {
-    my ($self, $args) = @_;
-    if (exists $args->{pattern} and exists $args->{ttl}) {
+    my ( $self, $args ) = @_;
+    if ( exists $args->{pattern} and exists $args->{ttl} ) {
         croak "invalid ttl" if $args->{ttl} < 1;
         croak "invalid pattern"
           unless defined $args->{pattern}
@@ -41,23 +41,23 @@ sub BUILD {
 # METHODS
 
 sub advance {
-    my ($self, $count, %param) = @_;
+    my ( $self, $count, %param ) = @_;
 
     my $measure = $self->measure;
 
-    for (1 .. $count // 1) {
+    for ( 1 .. $count // 1 ) {
         my $ttl = $self->ttl - 1;
 
         $param{measure} = $measure++;
         $param{pattern} = $self->pattern;
 
-        if ($ttl <= 0) {
+        if ( $ttl <= 0 ) {
             my $next = $self->next;
 
             confess "no next callback"
               unless defined $next and ref $next eq 'CODE';
 
-            ($param{pattern}, $ttl) = $next->($self, %param);
+            ( $param{pattern}, $ttl ) = $next->( $self, %param );
 
             confess "no pattern set"
               unless defined $param{pattern}
@@ -65,7 +65,7 @@ sub advance {
               and $param{pattern}->@*;
             confess "invalid ttl" if $ttl < 1;
 
-            $self->pattern($param{pattern});
+            $self->pattern( $param{pattern} );
 
             push $self->replay->@*, [ $param{pattern}, $ttl ];
         }
@@ -87,7 +87,7 @@ sub advance {
 #   $set->changes(...)
 
 sub clone {
-    my ($self, %param) = @_;
+    my ( $self, %param ) = @_;
 
     $param{newid} //= $self->id;
 
@@ -102,25 +102,25 @@ sub clone {
     # probably instead want to look at any ->pattern(...) or
     # ->replay(...) calls in your code
     my $pat = $self->pattern;
-    if (defined $pat) {
+    if ( defined $pat ) {
         die "invalid pattern" unless ref $pat eq 'ARRAY' and $pat->@*;
-        $new->pattern([ $pat->@* ]);
+        $new->pattern( [ $pat->@* ] );
     }
 
     my $ref = $self->replay;
-    if (defined $ref) {
+    if ( defined $ref ) {
         die "replay must be an array reference"
           unless ref $ref eq 'ARRAY';
         die "replay array must contain array references"
           unless ref $ref->[0] eq 'ARRAY';
-        $new->replay([ map { [ [ $_->[0]->@* ], $_->[1] ] } $ref->@* ]);
+        $new->replay( [ map { [ [ $_->[0]->@* ], $_->[1] ] } $ref->@* ] );
     }
 
     return $new;
 }
 
 sub from_string {
-    my ($self, $str, %param) = @_;
+    my ( $self, $str, %param ) = @_;
     croak "need a string" unless defined $str and length $str;
 
     $param{sep} //= "\t";
@@ -129,7 +129,8 @@ sub from_string {
     my $linenum = 1;
     my @newplay;
 
-    for my $line (split /\Q$param{rs}/, $str) {
+    for my $line ( split /\Q$param{rs}/, $str ) {
+        next if $line =~ m/^\s*(?:#|$)/;
         # the limits are to prevent overly long strings from being
         # parsed; if this is a problem write a modified from_string that
         # does allow such inputs, or modify the unused <beat> count
@@ -157,7 +158,7 @@ sub from_string {
 # TODO some means of note reduction and optional note sustains
 # over rests
 sub to_ly {
-    my ($self, %param) = @_;
+    my ( $self, %param ) = @_;
 
     my $replay = $self->replay;
     croak "empty replay log"
@@ -173,23 +174,23 @@ sub to_ly {
     my $ly   = '';
     my $maxm = $param{maxm} // ~0;
 
-    for my $ref ($replay->@*) {
-        my ($bpat, $ttl) = $ref->@*;
+    for my $ref ( $replay->@* ) {
+        my ( $bpat, $ttl ) = $ref->@*;
         $ttl = $maxm if $ttl > $maxm;
 
-        $ly .= "  % v$id " . join('', $bpat->@*) =~ tr/10/x./r . " $ttl\n";
-        if ($param{time}) {
+        $ly .= "  % v$id " . join( '', $bpat->@* ) =~ tr/10/x./r . " $ttl\n";
+        if ( $param{time} ) {
             $ly .= '  \time ' . $bpat->@* . '/' . $param{time} . "\n";
         }
         my $str = ' ';
-        for my $x ($bpat->@*) {
-            if ($x == NOTE_ON) {
+        for my $x ( $bpat->@* ) {
+            if ( $x == NOTE_ON ) {
                 $str .= ' ' . $param{note} . $param{dur};
             } else {
                 $str .= ' ' . $param{rest} . $param{dur};
             }
         }
-        $ly .= join("\n", ($str) x $ttl) . "\n";
+        $ly .= join( "\n", ($str) x $ttl ) . "\n";
 
         $maxm -= $ttl;
         last if $maxm <= 0;
@@ -198,7 +199,7 @@ sub to_ly {
 }
 
 sub to_midi {
-    my ($self, %param) = @_;
+    my ( $self, %param ) = @_;
 
     my $replay = $self->replay;
     croak "empty replay log"
@@ -221,25 +222,25 @@ sub to_midi {
     my $leftover = 0;
     my $maxm     = $param{maxm} // ~0;
 
-    push $events->@*, [ 'track_name', 0, 'voice' . (length $id ? " $id" : '') ];
+    push $events->@*, [ 'track_name', 0, 'voice' . ( length $id ? " $id" : '' ) ];
     push $events->@*, [ 'set_tempo',  0, $param{tempo} ];
 
-    for my $ref ($replay->@*) {
-        my ($bpat, $ttl) = $ref->@*;
+    for my $ref ( $replay->@* ) {
+        my ( $bpat, $ttl ) = $ref->@*;
         $ttl = $maxm if $ttl > $maxm;
 
         push $events->@*,
           [ 'text_event', $leftover,
-            "v$id " . join('', $bpat->@*) =~ tr/10/x./r . " $ttl\n"
+            "v$id " . join( '', $bpat->@* ) =~ tr/10/x./r . " $ttl\n"
           ];
 
         $delay = 0;
-        my ($onsets, $open, @midi);
+        my ( $onsets, $open, @midi );
 
-        for my $x ($bpat->@*) {
-            if ($x == NOTE_ON) {
+        for my $x ( $bpat->@* ) {
+            if ( $x == NOTE_ON ) {
                 $onsets++;
-                if (defined $open) {
+                if ( defined $open ) {
                     push @midi, [ 'note_off', $delay, $param{chan}, $open, 0 ];
                     $delay = 0;
                 }
@@ -247,7 +248,7 @@ sub to_midi {
                 $delay = $param{dur};
                 $open  = $param{note};
             } else {
-                if (defined $open) {
+                if ( defined $open ) {
                     push @midi, [ 'note_off', $delay, $param{chan}, $open, 0 ];
                     $delay = 0;
                     undef $open;
@@ -255,7 +256,7 @@ sub to_midi {
                 $delay += $param{dur};
             }
         }
-        if (defined $open) {
+        if ( defined $open ) {
             push @midi, [ 'note_off', $delay, $param{chan}, $open, 0 ];
             $delay = 0;
         }
@@ -264,11 +265,11 @@ sub to_midi {
         # must be applied to the start of subsequent repeats of this
         # measure (if there is an onset that makes this possible) and
         # then must be passed on as leftovers for the next text_event
-        if ($delay and $onsets and $ttl > 1) {
+        if ( $delay and $onsets and $ttl > 1 ) {
             push $events->@*, @midi;
             $midi[0] = [ $midi[0]->@* ];
             $midi[0][1] += $delay;
-            push $events->@*, (@midi) x ($ttl - 1);
+            push $events->@*, (@midi) x ( $ttl - 1 );
         } else {
             push $events->@*, (@midi) x $ttl;
         }
@@ -277,7 +278,7 @@ sub to_midi {
         $leftover = $delay;
 
         # remainder of full measures of rest, if any
-        $leftover += $bpat->@* * $param{dur} * ($ttl - 1) unless $onsets;
+        $leftover += $bpat->@* * $param{dur} * ( $ttl - 1 ) unless $onsets;
 
         $maxm -= $ttl;
         last if $maxm <= 0;
@@ -292,20 +293,20 @@ sub to_midi {
     # and here the MIDI is modified if need be -- the above is already
     # complicated, and it's (somewhat) easier to cut events out and
     # fiddle with delays on the completed stream
-    if ($param{sustain} or $param{notext}) {
+    if ( $param{sustain} or $param{notext} ) {
         my $i = 0;
-        while ($i < $events->$#*) {
-            if ($param{sustain} and $events->[$i][0] eq 'note_off') {
+        while ( $i < $events->$#* ) {
+            if ( $param{sustain} and $events->[$i][0] eq 'note_off' ) {
                 # extend delay on the note_off to the next note_on;
                 # there might be a text_event between
                 my $delay = 0;
                 my $j     = $i + 1;
                 while (1) {
-                    if ($events->[$j][EVENT] eq 'text_event' and $events->[$j][DTIME] > 0) {
+                    if ( $events->[$j][EVENT] eq 'text_event' and $events->[$j][DTIME] > 0 ) {
                         $delay += $events->[$j][DTIME];
                         $events->[$j][DTIME] = 0;
-                    } elsif ($events->[$j][EVENT] eq 'note_on') {
-                        if ($events->[$j][DTIME] > 0) {
+                    } elsif ( $events->[$j][EVENT] eq 'note_on' ) {
+                        if ( $events->[$j][DTIME] > 0 ) {
                             $delay += $events->[$j][DTIME];
                             $events->[$j] = [ $events->[$j]->@* ];
                             $events->[$j][DTIME] = 0;
@@ -317,7 +318,7 @@ sub to_midi {
                 $events->[$i] = [ $events->[$i]->@* ];
                 $events->[$i][DTIME] += $delay;
 
-            } elsif ($param{notext} and $events->[$i][EVENT] eq 'text_event') {
+            } elsif ( $param{notext} and $events->[$i][EVENT] eq 'text_event' ) {
                 my $delay = $events->[$i][DTIME];
                 splice $events->@*, $i, 1;
                 $events->[$i] = [ $events->[$i]->@* ];
@@ -335,7 +336,7 @@ sub to_midi {
 }
 
 sub to_string {
-    my ($self, %param) = @_;
+    my ( $self, %param ) = @_;
 
     my $replay = $self->replay;
     croak "empty replay log"
@@ -351,12 +352,12 @@ sub to_string {
     my $maxm = $param{maxm} // ~0;
     my $str  = '';
 
-    for my $ref ($replay->@*) {
-        my ($bpat, $ttl) = $ref->@*;
-        my $bstr = join('', $bpat->@*) =~ tr/10/x./r;
+    for my $ref ( $replay->@* ) {
+        my ( $bpat, $ttl ) = $ref->@*;
+        my $bstr = join( '', $bpat->@* ) =~ tr/10/x./r;
         $ttl = $maxm if $ttl > $maxm;
 
-        $str .= join($param{sep}, $beat, $id, $bstr, $ttl) . $param{rs};
+        $str .= join( $param{sep}, $beat, $id, $bstr, $ttl ) . $param{rs};
 
         $beat += $ttl * $bpat->@*;
         $maxm -= $ttl;
@@ -546,7 +547,11 @@ different ID values.
 Attempts to parse and push the I<string> (presumably from B<to_string>
 or of compatible form) onto the replay log. The ID parameter is ignored;
 all events are assumed to belong to this voice. The events are assumed
-to be in ascending order. Same parameters as B<to_string>.
+to be in sequential order; the I<beat-count> field is ignored. Same
+parameters as B<to_string>.
+
+Lines that only contain whitespace, are empty, or start with a C<#> that
+may have whitespace before it will be skipped.
 
 =item B<to_ly> [ I<param> ]
 

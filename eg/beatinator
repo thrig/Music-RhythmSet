@@ -22,28 +22,28 @@ my $rest = [ (0) x $BPM ];
 # each voice has a consistent (but different) number of onsets per
 # measure. those with more onsets are given more trials to lower
 # the rhythmic variance (see eg/variance)
-my @onsets = ([ 3, 100 ], [ 7, 600 ]);
+my @onsets = ( [ 3, 100 ], [ 7, 600 ] );
 
 sub voice0 {
     state $i = 0;
     # mixup which of the two other voices is more active every so often
-    if (++$i == 2) { $i = 0; @onsets = reverse @onsets }
+    if ( ++$i == 2 ) { $i = 0; @onsets = reverse @onsets }
     # if you know what rhythms you want to use it would be simpler to
     # put them into a structure and use that somehow. filter_pattern
     # finds patterns that best fit a ranking system; this may not result
     # in usable rhythms
-    filter_pattern(5, $BPM, 400), 16;
+    filter_pattern( 5, $BPM, 400 ), 16;
 }
 
 sub voice1 {
     # one time fixup of when the rhythm changes for this voice
     state $i = 0;
     my $ttl = $i++ ? 16 : 8;
-    filter_pattern($onsets[0][0], $BPM, $onsets[0][1]), $ttl;
+    filter_pattern( $onsets[0][0], $BPM, $onsets[0][1] ), $ttl;
 }
 
 sub voice2 {
-    filter_pattern($onsets[1][0], $BPM, $onsets[1][1]), 16;
+    filter_pattern( $onsets[1][0], $BPM, $onsets[1][1] ), 16;
 }
 
 # delayed onsets for two of the voices
@@ -69,12 +69,12 @@ $set->to_midi(
 # (there are also text_event in the MIDI to help locate the rhythms
 # should this script by accident produce something good)
 $set->changes(
-    header  => sub { say '# measure ' . $_[0] },
-    voice   => sub {
-        my ($mm, $id, $bp, $bs, $new, $repeat) = @_;
+    header => sub { say '# measure ' . $_[0] },
+    voice  => sub {
+        my ( $mm, $id, $bp, $bs, $new, $repeat ) = @_;
         # 'n' if there was a pattern change event for this voice, 'r' if
         # that change event did not actually change the pattern
         # (uncommon in this script)
-        say join "\t", $id, $bs, ($new ? 'n' : '') . ($repeat ? 'r' : '');
+        say join "\t", $id, $bs, ( $new ? 'n' : '' ) . ( $repeat ? 'r' : '' );
     }
 );

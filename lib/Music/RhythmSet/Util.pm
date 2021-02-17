@@ -21,17 +21,17 @@ sub beatstring {
     my ($bpat) = @_;
     croak "no pattern set"
       unless defined $bpat and ref $bpat eq 'ARRAY';
-    return join('', $bpat->@*) =~ tr/10/x./r;
+    return join( '', $bpat->@* ) =~ tr/10/x./r;
 }
 
 sub compare_onsets {
-    my ($first, $second) = @_;
+    my ( $first, $second ) = @_;
 
     my $same   = 0;
     my $onsets = 0;
 
-    for my $i (0 .. $first->$#*) {
-        if ($first->[$i] == NOTE_ON) {
+    for my $i ( 0 .. $first->$#* ) {
+        if ( $first->[$i] == NOTE_ON ) {
             $onsets++;
             $same++ if $second->[$i] == NOTE_ON;
         }
@@ -49,7 +49,7 @@ sub duration {
     my $measures = 0;
     my $beats    = 0;
 
-    for my $ref ($replay->@*) {
+    for my $ref ( $replay->@* ) {
         $measures += $ref->[1];
         $beats    += $ref->[0]->@* * $ref->[1];
     }
@@ -58,17 +58,17 @@ sub duration {
 }
 
 sub filter_pattern {
-    my ($onsets, $total, $trials, $fudge, $nozero) = @_;
+    my ( $onsets, $total, $trials, $fudge, $nozero ) = @_;
 
     $fudge //= 0.0039;
     my $best = ~0;
     my $bpat;
 
-    for (1 .. $trials) {
+    for ( 1 .. $trials ) {
         my $new   = &rand_onsets;
         my $score = score_stddev($new) + score_fourfour($new) * $fudge;
         next if $nozero and $score == 0;
-        if ($score < $best) {
+        if ( $score < $best ) {
             $best = $score;
             $bpat = $new;
         }
@@ -81,7 +81,7 @@ sub flatten {
     my ($replay) = @_;
     croak "no replay log"
       unless defined $replay and ref $replay eq 'ARRAY';
-    return [ map { ($_->[0]->@*) x $_->[1] } $replay->@* ];
+    return [ map { ( $_->[0]->@* ) x $_->[1] } $replay->@* ];
 }
 
 # "onset-coordinate vector" notation for a pattern
@@ -93,7 +93,7 @@ sub ocvec {
     my @set;
     my $i = 0;
 
-    for my $x ($bpat->@*) {
+    for my $x ( $bpat->@* ) {
         push @set, $i if $x == NOTE_ON;
         $i++;
     }
@@ -108,7 +108,7 @@ sub onset_count {
 
     my $onsets = 0;
 
-    for my $x ($bpat->@*) {
+    for my $x ( $bpat->@* ) {
         $onsets++ if $x == NOTE_ON;
     }
 
@@ -116,12 +116,12 @@ sub onset_count {
 }
 
 sub rand_onsets {
-    my ($onsets, $total) = @_;
+    my ( $onsets, $total ) = @_;
     croak "onsets must be < total" if $onsets >= $total;
 
     my @pattern;
     while ($total) {
-        if (rand() < $onsets / $total) {
+        if ( rand() < $onsets / $total ) {
             push @pattern, NOTE_ON;
             $onsets--;
         } else {
@@ -145,7 +145,7 @@ sub score_fourfour {
     my $i     = 0;
     my $score = 0;
 
-    for my $x ($bpat->@*) {
+    for my $x ( $bpat->@* ) {
         $score += $beatquality[$i] if $x == NOTE_ON;
         $i++;
     }
@@ -159,11 +159,11 @@ sub score_stddev {
     my @deltas;
     my $len = $bpat->@*;
 
-    for my $i (0 .. $bpat->$#*) {
-        if ($bpat->[$i] == NOTE_ON) {
+    for my $i ( 0 .. $bpat->$#* ) {
+        if ( $bpat->[$i] == NOTE_ON ) {
             my $j = $i + 1;
             while (1) {
-                if ($bpat->[ $j % $len ] == NOTE_ON) {
+                if ( $bpat->[ $j % $len ] == NOTE_ON ) {
                     my $d = $j - $i;
                     push @deltas, $d;
                     last;
@@ -178,15 +178,17 @@ sub score_stddev {
 }
 
 sub upsize {
-    my ($bpat, $newlen) = @_;
+    my ( $bpat, $newlen ) = @_;
     croak "no pattern set"
-      unless defined $bpat and ref $bpat eq 'ARRAY' and $bpat->@*;
+      unless defined $bpat
+      and ref $bpat eq 'ARRAY'
+      and $bpat->@*;
     my $len = $bpat->@*;
     croak "new length must be greater than pattern length" if $newlen <= $len;
-    my $mul = int($newlen / $len);
+    my $mul = int( $newlen / $len );
     my @pat = (NOTE_OFF) x $newlen;
-    for my $i (0 .. $bpat->$#*) {
-        if ($bpat->[$i] == NOTE_ON) {
+    for my $i ( 0 .. $bpat->$#* ) {
+        if ( $bpat->[$i] == NOTE_ON ) {
             $pat[ $i * $mul ] = NOTE_ON;
         }
     }
@@ -194,7 +196,7 @@ sub upsize {
 }
 
 sub write_midi {
-    my ($file, $track, %param) = @_;
+    my ( $file, $track, %param ) = @_;
 
     $param{format} //= 1;
     $param{ticks}  //= 96;

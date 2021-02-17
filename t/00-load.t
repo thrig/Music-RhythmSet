@@ -11,6 +11,4 @@ BEGIN {
     use_ok('Music::RhythmSet')        || print "Bail out!\n";
 }
 
-diag(
-    "Testing Music::RhythmSet $Music::RhythmSet::VERSION, Perl $], $^X"
-);
+diag("Testing Music::RhythmSet $Music::RhythmSet::VERSION, Perl $], $^X");

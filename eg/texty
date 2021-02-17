@@ -28,7 +28,7 @@ my $file = shift // die "Usage: $0 file|- [midi-file]\n";
 my $midi = shift;
 my $fh;
 
-if ($file eq '-') {
+if ( $file eq '-' ) {
     $fh = \*STDIN;
 } else {
     open $fh, '<', $file or die "could not open '$file': $!\n";
@@ -36,8 +36,8 @@ if ($file eq '-') {
 
 my $set = Music::RhythmSet->new->from_string(
     do { local $/; readline $fh },
-    defined $Flag_RS  ? (rs  => $Flag_RS)  : (),
-    defined $Flag_Sep ? (sep => $Flag_Sep) : (),
+    defined $Flag_RS  ? ( rs  => $Flag_RS )  : (),
+    defined $Flag_Sep ? ( sep => $Flag_Sep ) : (),
 );
 
 $set->to_midi->write_to_file($midi) if defined $midi;
@@ -45,10 +45,10 @@ $set->to_midi->write_to_file($midi) if defined $midi;
 exit if $Flag_Nochanges;
 
 $set->changes(
-    $Flag_Divisor ? (divisor => $Flag_Divisor) : (),
+    $Flag_Divisor ? ( divisor => $Flag_Divisor ) : (),
     header => sub { say '# measure ' . $_[0] },
     voice  => sub {
-        my ($mm, $id, $bpat, $bstr, $new, $repeat) = @_;
-        say join "\t", $id, $bstr, ($new ? 'n' : '') . ($repeat ? 'r' : '');
+        my ( $mm, $id, $bpat, $bstr, $new, $repeat ) = @_;
+        say join "\t", $id, $bstr, ( $new ? 'n' : '' ) . ( $repeat ? 'r' : '' );
     }
 );
