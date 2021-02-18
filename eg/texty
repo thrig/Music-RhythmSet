@@ -1,7 +1,7 @@
 #!/usr/bin/env perl
 #
 # texty - imports replay logs from the to_string form and optionally
-# emits that data in various forms (if all goes well). the to_string
+# emits those logs in various forms (if all goes well). the to_string
 # form can also be read from a MIDI file written by Music::RhythmSet:
 #
 #   $ perl -MMIDI -e 'MIDI::Opus->new({ from_file => "noise.midi" })->dump({dump_tracks=>1})' \
@@ -16,8 +16,6 @@
 # which probably should be written up as a "from_midi" method but that's
 # more work (and testing...) and lacks the potential to edit the string
 # form of the replay log
-#
-# there may be things to TWEAK in this code
 
 use 5.24.0;
 use warnings;
@@ -26,14 +24,20 @@ use Music::RhythmSet;
 
 Getopt::Long::Configure('bundling');
 GetOptions(
+    'channel|c=i'  => \my $Flag_Channel,
     'divisor|d=i'  => \my $Flag_Divisor,
     'help|h|?'     => \&emit_help,
     'lilypond|L=s' => \my $Flag_Lilypond,
     'no-changes|C' => \my $Flag_Nochanges,
+    'notes=s'      => \my $Flag_Notes,
     'rs|R=s'       => \my $Flag_RS,
     'sep|S=s'      => \my $Flag_Sep,
+    'sustain|sus'  => \my $Flag_Sustain,
     'update|U'     => \my $Flag_Update,
 ) or exit 1;
+
+$Flag_Channel //= 9;    # drum
+$Flag_Notes = [ split /,/, $Flag_Notes ] if defined $Flag_Notes;
 
 my ( $file, $midi ) = @ARGV;
 $file //= '-';
@@ -52,10 +56,12 @@ my $set = Music::RhythmSet->new->from_string(
 );
 
 if ( defined $midi ) {
-    # TODO CLI flags for these. in the meantime TWEAK them as need be
     $set->to_midi(
-        chan  => 9,
-        track => [ { note => 60 }, { note => 67 }, { note => 68 } ]
+        chan => $Flag_Channel,
+        defined $Flag_Notes
+        ? ( track => [ map { { note => $_ } } $Flag_Notes->@* ] )
+        : (),
+        defined $Flag_Sustain ? ( sustain => 1 ) : (),
     )->write_to_file($midi);
 }
 
@@ -77,13 +83,14 @@ if ($Flag_Update) {
     if ( $file eq '-' ) {
         $fh = \*STDOUT;
     } else {
-        # NOTE is not atomic, risk of data loss if something goes awry,
-        # etc. you have backups, right?
+        # NOTE is not atomic, risk of data loss when something goes
+        # awry. you have backups, right?
         seek $fh, 0, 0;
     }
-    say $fh $set->to_string(
-        defined $Flag_RS  ? ( rs  => $Flag_RS )  : (),
-        defined $Flag_Sep ? ( sep => $Flag_Sep ) : (),
+    print $fh $set->to_string(
+        $Flag_Divisor     ? ( divisor => $Flag_Divisor ) : (),
+        defined $Flag_RS  ? ( rs      => $Flag_RS )      : (),
+        defined $Flag_Sep ? ( sep     => $Flag_Sep )     : (),
     );
 }
 
@@ -104,11 +111,14 @@ sub emit_help {
 Usage: texty [options] file|- [midi-file]
 
 Options:
-  -d [divisor]  Divide beat count by this many beats per measure
   -C            Do not emit changes to stderr
+  -c chan       MIDI channel to use for all voices (default 9, drum)
+  -d [divisor]  Divide beat count by this many beats per measure
   -L lyfile     Lilypond file; first X in filename gets counter var
+  --notes ...   Note to use for each MIDI track e.g.    --notes=60,67,68
   -R recsep     Record sep for string import and export
-  -s fieldsep   Field sep for string import and export
+  -S fieldsep   Field sep for string import and export
+  --sustain     MIDI notes will be sustained until next onset
   -U            Update file in place (or emit to stdout if no file)
 
 END_USAGE

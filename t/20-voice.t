@@ -11,7 +11,7 @@
 
 use 5.24.0;
 use Data::Dumper;
-use Test::Most tests => 71;
+use Test::Most tests => 73;
 
 my $deeply = \&eq_or_diff;
 
@@ -115,6 +115,16 @@ EOLY
     lives_ok {
         $v2 = Music::RhythmSet::Voice->new->from_string( $str, rs => "\r", sep => ' ' )
     };
+
+    # "divisor" makes sense for the to_string beat-count field so was
+    # copied over from the "changes" method. also testing the new
+    # "whitespace runs in by default" of from_string
+    lives_ok {
+        $v2 = Music::RhythmSet::Voice->new( id => 0 )
+          ->from_string("0  0   x.x.x...x...x...    16\n256    0   x...x.x.x...x...    8")
+    };
+    is( $v2->to_string( divisor => 16 ),
+        "0\t0\tx.x.x...x...x...\t16\n16\t0\tx...x.x.x...x...\t8\n" );
 
     dies_ok { $v2->from_string } qr/need a string/;
     dies_ok { $v2->from_string('') } qr/need a string/;

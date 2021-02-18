@@ -123,8 +123,12 @@ sub from_string {
     my ( $self, $str, %param ) = @_;
     croak "need a string" unless defined $str and length $str;
 
-    $param{sep} //= "\t";
-    $param{rs}  //= "\n";
+    $param{rs} //= "\n";
+    if ( $param{sep} ) {
+        $param{sep} = qr/\Q$param{sep}\E/;
+    } else {
+        $param{sep} = qr/\s+/;
+    }
 
     my $linenum = 1;
     my @newplay;
@@ -135,10 +139,10 @@ sub from_string {
         # parsed; if this is a problem write a modified from_string that
         # does allow such inputs, or modify the unused <beat> count
         if ($line =~ m/^
-            (?<beat>\d{1,10})     \Q$param{sep}\E
-            (?<id>.*?)            \Q$param{sep}\E
-            (?<bstr>[x.]{1,256})  \Q$param{sep}\E
-            (?<ttl>\d{1,5})
+            (?<beat>\d{1,10})     $param{sep}
+            (?<id>.*?)            $param{sep}
+            (?<bstr>[x.]{1,256})  $param{sep}
+            (?<ttl>\d{1,5})       \s*(?:[#].*)?
             $/ax
         ) {
             # NOTE <id> is unused and is assumed to be "this voice"
@@ -212,7 +216,7 @@ sub to_midi {
     $param{dur}   //= 20;
     $param{note}  //= 60;
     $param{tempo} //= 500_000;
-    $param{velo}  //= 96;
+    $param{velo}  //= 90;        # "default value" per lilypond scm/midi.scm
 
     my $track  = MIDI::Track->new;
     my $events = $track->events_r;
@@ -344,8 +348,9 @@ sub to_string {
       and ref $replay eq 'ARRAY'
       and $replay->@*;
 
-    $param{rs}  //= "\n";
-    $param{sep} //= "\t";
+    $param{divisor} //= 1;
+    $param{rs}      //= "\n";
+    $param{sep}     //= "\t";
 
     my $beat = 0;
     my $id   = $self->id    // '';
@@ -357,7 +362,8 @@ sub to_string {
         my $bstr = join( '', $bpat->@* ) =~ tr/10/x./r;
         $ttl = $maxm if $ttl > $maxm;
 
-        $str .= join( $param{sep}, $beat, $id, $bstr, $ttl ) . $param{rs};
+        $str .=
+          join( $param{sep}, $beat / $param{divisor}, $id, $bstr, $ttl ) . $param{rs};
 
         $beat += $ttl * $bpat->@*;
         $maxm -= $ttl;
@@ -412,6 +418,9 @@ This module encapsulates a single rhythmic voice (or track) and has
 various methods to advance and change the rhythm over time. Rhythms can
 be exported in various formats. L<Music::RhythmSet> can store multiple
 voices, but most of the work is done by this module for each voice.
+
+See C<eg/beatinator> and C<eg/texty> in the distribution for this module
+for various ways to generate MIDI, import from string form, etc.
 
 Various calls will throw exceptions if something goes awry.
 
@@ -545,13 +554,15 @@ different ID values.
 =item B<from_string> I<string> [ I<param> ]
 
 Attempts to parse and push the I<string> (presumably from B<to_string>
-or of compatible form) onto the replay log. The ID parameter is ignored;
-all events are assumed to belong to this voice. The events are assumed
-to be in sequential order; the I<beat-count> field is ignored. Same
-parameters as B<to_string>.
+or of compatible form) onto the replay log. The ID parameter is
+ignored; all events are assumed to belong to this voice. The events are
+assumed to be in sequential order; the I<beat-count> field is ignored.
+Same parameters as B<to_string>. A default split on whitespace delimits
+the fields.
 
 Lines that only contain whitespace, are empty, or start with a C<#> that
-may have whitespace before it will be skipped.
+may have whitespace before it will be skipped. Trailing whitespace and
+C<#> comments on lines are ignored.
 
 =item B<to_ly> [ I<param> ]
 
@@ -590,17 +601,38 @@ I<maxm> will limit the number of measures produced from the replay log.
 
 =item B<to_string> [ I<param> ]
 
-Converts the replay log of the voice (if any) into a custom text
-format. I<param> may contain I<sep> used as a field separator and I<rs>
-used as a record separator. The format is tab separated by default,
+Converts the replay log of the voice (if any) into a custom text format
 with the fields:
 
   beat-count voice-id beatstring ttl
 
 This allows a numeric sort on the first column to order the records for
-multiple voices together in a timeline view.
+multiple voices together in a timeline view. The I<voice-id> must be
+kept sorted in ascending order if B<from_string> will be used.
 
-I<maxm> will limit the number of measures produced from the replay log.
+C<eg/texty> in the distribution for this module uses this method.
+
+Parameters:
+
+=over 4
+
+=item I<divisor>
+
+will divide the I<beat-count> by that value.
+
+=item I<maxm>
+
+will limit the number of measures produced from the replay log.
+
+=item I<rs>
+
+record separator, default C<\n>.
+
+=item I<sep>
+
+field separator, default C<\t>.
+
+=back
 
 =back
 

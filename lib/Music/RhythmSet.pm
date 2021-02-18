@@ -150,8 +150,12 @@ sub from_string {
     my ( $self, $str, %param ) = @_;
     croak "need a string" unless defined $str and length $str;
 
-    $param{sep} //= "\t";
-    $param{rs}  //= "\n";
+    $param{rs} //= "\n";
+    if ($param{sep}) {
+        $param{sep} = qr/\Q$param{sep}\E/;
+    } else {
+        $param{sep} = qr/\s+/;
+    }
 
     my $linenum = 1;
     my @newplay;
@@ -163,10 +167,10 @@ sub from_string {
         # parsed; if this is a problem write a modified from_string that
         # does allow such inputs, or modify the unused <beat> count
         if ($line =~ m/^
-            (?<beat>\d{1,10})     \Q$param{sep}\E
-            (?<id>\d{1,3})        \Q$param{sep}\E
-            (?<bstr>[x.]{1,256})  \Q$param{sep}\E
-            (?<ttl>\d{1,5})
+            (?<beat>\d{1,10})     $param{sep}
+            (?<id>\d{1,3})        $param{sep}
+            (?<bstr>[x.]{1,256})  $param{sep}
+            (?<ttl>\d{1,5})       \s*(?:[#].*)?
             $/ax
         ) {
             # only +1 ID over max is allowed to avoid creating a sparse
@@ -295,9 +299,12 @@ Music::RhythmSet - sets of rhythms and various generation functions
 This module supports sets of rhythms, each being a
 L<Music::RhythmSet::Voice> object, which is where most of the action
 happens. L<Music::RhythmSet::Util> offers various rhythm generation and
-classification functions. Rhythms have a lifetime (ttl), and a callback
-function can set a new rhythm and time-to-live when the ttl expires.
-Rhythms can be exported in various formats.
+classification functions. Rhythms have a lifetime (ttl), and can have a
+callback function that can set a new rhythm and time-to-live when the
+ttl expires. Rhythms can be exported in various formats.
+
+See C<eg/beatinator> and C<eg/texty> in the distribution for this module
+for various ways to generate MIDI, import from string form, etc.
 
 Various calls will throw exceptions if something goes awry.
 
@@ -438,12 +445,13 @@ compatible form) and adds any C<pattern,ttl> parsed to the replay log of
 each voice. The events are assumed to be in sequential order for each
 voice; the I<beat-count> field is ignored. The ID values must be in
 ascending order (at least when first encountered). Same parameters as
-B<to_string>.
+B<to_string>. A default split on whitespace delimits the fields.
 
 C<eg/texty> in the distribution for this module uses this method.
 
 Lines that only contain whitespace, are empty, or start with a C<#> that
-may have whitespace before it will be skipped.
+may have whitespace before it will be skipped. Trailing whitespace and
+C<#> comments on lines are ignored.
 
 =item B<measure> I<count>
 
