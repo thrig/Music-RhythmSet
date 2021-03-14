@@ -4,7 +4,7 @@
 # various utility functions
 
 package Music::RhythmSet;
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 
 use 5.24.0;
 use warnings;
