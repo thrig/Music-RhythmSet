@@ -355,7 +355,7 @@ I<ticks> (see the MIDI specification).
 
 =head1 BUGS
 
-<https://github.com/thrig/Music-RhythmSet>
+None known.
 
 =head1 SEE ALSO
 

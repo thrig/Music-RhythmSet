@@ -678,7 +678,7 @@ field separator, default C<\t>.
 
 =head1 BUGS
 
-<https://github.com/thrig/Music-RhythmSet>
+None known.
 
 =head1 SEE ALSO
 
